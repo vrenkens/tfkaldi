@@ -9,7 +9,7 @@ from abc import ABCMeta, abstractmethod
 ##This class defines a pyramidal lstm layer.
 class pLSTM(object):
 
-	##FFLayer constructor, defines the variables
+	##pyramidal LSTM constructor, defines the variables
 	#
 	#@param input_dim input dimension of the layer
 	#@param output_dim output dimension of the layer
