@@ -5,7 +5,6 @@ import tensorflow as tf
 import numpy as np
 from abc import ABCMeta, abstractmethod
 
-
 ##This class defines a pyramidal lstm layer.
 class pLSTM(object):
 
@@ -17,6 +16,10 @@ class pLSTM(object):
 	#@param name name of the layer
 	#@param transfername name of the transfer function that is used
 	#@param l2_norm boolean that determines of l2_normalisation is used after every layer
+
+
+	# BasicLSTMCell connected in recurrent connections.
+
 	def __init__(self, input_dim, output_dim, weights_std, name, transfername='linear', l2_norm=False):
 
 		#create the model parameters in this layer
@@ -33,10 +36,9 @@ class pLSTM(object):
 	##Do the forward computation
 	#
 	#@param inputs the input to the layer
-	#@param apply_dropout bool to determine if dropout is aplied
 	#
 	#@return the output of the layer
-	def __call__(self, inputs, apply_dropout = True):
+	def __call__(self, inputs):
 
 		with tf.name_scope(self.name):
 
@@ -130,4 +132,4 @@ def transferFunction(inputs, name):
 			#if the mean squared value is larger then one select the normalized value otherwise select the unnormalised one
 			return tf.select(tf.greater(tf.reshape(sig, [-1]), 1), normalized, inputs)
 	else:
-		raise Exception('unknown transfer function: %s' % name
+		raise Exception('unknown transfer function: %s' % name)
