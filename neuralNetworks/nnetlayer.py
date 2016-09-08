@@ -9,53 +9,18 @@ from abc import ABCMeta, abstractmethod
 class pLSTM(object):
 
 	##pyramidal LSTM constructor, defines the variables
-	#
-	#@param input_dim input dimension of the layer
-	#@param output_dim output dimension of the layer
-	#@param weights_std standart deviation of the weights initializer
-	#@param name name of the layer
-	#@param transfername name of the transfer function that is used
-	#@param l2_norm boolean that determines of l2_normalisation is used after every layer
+	def __init__(self, input_dim, output_dim, lstm_dim):
+		with tf.variable_scope('forward'):
+			self.forward_lstm_block = tf.nn.rnn_cell.BasicLSTMCell(lstm_dim)
+		with tf.variable_scope('backward'):
+			self.backward_lstm_block = tf.nn.rnn_cell.BasicLSTMCell(lstm_dim)
 
-
-	# BasicLSTMCell connected in recurrent connections.
-
-	def __init__(self, input_dim, output_dim, weights_std, name, transfername='linear', l2_norm=False):
-
-		#create the model parameters in this layer
-		with tf.variable_scope(name + '_parameters'):
-			self.weights = tf.get_variable('weights', [input_dim, output_dim], initializer=tf.random_normal_initializer(stddev=weights_std))
-			self.biases = tf.get_variable('biases',  [output_dim], initializer=tf.constant_initializer(0))
-
-		#save the parameters
-		self.transfername = transfername
-		self.l2_norm = l2_norm
-		self.dropout = dropout
-		self.name = name
-
-	##Do the forward computation
-	#
-	#@param inputs the input to the layer
-	#
-	#@return the output of the layer
 	def __call__(self, inputs):
-
-		with tf.name_scope(self.name):
-
-			#apply weights and biases
-			outputs = transferFunction(tf.matmul(inputs, self.weights) + self.biases, self.transfername)
-
-			#apply l2 normalisation
-			if self.l2_norm:
-				outputs = transferFunction(outputs, 'l2_norm')
-
-			#apply dropout
-			if self.dropout<1 and apply_dropout:
-				outputs = tf.nn.dropout(outputs, self.dropout)
+		outputs, output_state_fw, output_state_bw = bidirectional_rnn(self.forward_lstm_block,
+			 				  										  self.backward_lstm_block,
+							  								  		  inputs)
 
 		return outputs
-
-
 
 ##This class defines a fully connected feed forward layer
 class FFLayer(object):
