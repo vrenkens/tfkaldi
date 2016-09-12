@@ -9,31 +9,37 @@ from abc import ABCMeta, abstractmethod
 class pLSTM(object):
 
 	##pyramidal LSTM constructor, defines the variables
+	# output_dim = number of classes.
 	def __init__(self, input_dim, output_dim, lstm_dim):
 		with tf.variable_scope('forward'):
 			self.forward_lstm_block = tf.nn.rnn_cell.BasicLSTMCell(lstm_dim)
 		with tf.variable_scope('backward'):
 			self.backward_lstm_block = tf.nn.rnn_cell.BasicLSTMCell(lstm_dim)
 
-	def __call__(self, inputs):
-		outputs, output_state_fw, output_state_bw = bidirectional_rnn(self.forward_lstm_block,
-			 				  										  self.backward_lstm_block,
-							  								  		  inputs)
+		#create the model parameters in this layer
+		with tf.variable_scope(name + '_parameters'):
+			self.weights = tf.get_variable('weights', [2*lstm_dim, output_dim], initializer=tf.random_normal_initializer(stddev=weights_std))
+			self.biases = tf.get_variable('biases',  [output_dim], initializer=tf.constant_initializer(0))
 
-		return outputs
+	def __call__(self, inputs, apply_dropout = True):
+		outputs, output_state_fw, output_state_bw = bidirectional_rnn(self.forward_lstm_block,
+			self.backward_lstm_block, inputs)
+
+		#linear neuron computes the output.
+		return tf.matmul(outputs[-1],self.weights) + self.biases
 
 ##This class defines a fully connected feed forward layer
 class FFLayer(object):
 
-	##FFLayer constructor, defines the variables
+	##FFLayer constructor, defines the variables.
 	#
-	#@param input_dim input dimension of the layer
-	#@param output_dim output dimension of the layer
-	#@param weights_std standart deviation of the weights initializer
-	#@param name name of the layer
-	#@param transfername name of the transfer function that is used
-	#@param l2_norm boolean that determines of l2_normalisation is used after every layer
-	#@param dropout the chance that a hidden unit is propagated to the next layer
+	#@param input_dim input dimension of the layer.
+	#@param output_dim output dimension of the layer.
+	#@param weights_std standart deviation of the weights initializer.
+	#@param name name of the layer.
+	#@param transfername name of the transfer function that is used.
+	#@param l2_norm boolean that determines of l2_normalisation is used after every layer.
+	#@param dropout the chance that a hidden unit is propagated to the next layer.
 	def __init__(self, input_dim, output_dim, weights_std, name, transfername='linear', l2_norm=False, dropout=1):
 
 		#create the model parameters in this layer
@@ -47,7 +53,7 @@ class FFLayer(object):
 		self.dropout = dropout
 		self.name = name
 
-	##Do the forward computation
+	## Do the forward computation.
 	#
 	#@param inputs the input to the layer
 	#@param apply_dropout bool to determine if dropout is aplied
