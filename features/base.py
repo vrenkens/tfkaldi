@@ -27,6 +27,7 @@
 import numpy
 import sigproc
 from scipy.fftpack import dct
+from scipy.ndimage import convolve1d
 
 # make it python3.x compatible
 try:
@@ -170,4 +171,30 @@ def lifter(cepstra,L=22):
     else:
         # values of L <= 0, do nothing
         return cepstra
+        
+##Compute the first order derivative of the features
+#
+#@param features the input features
+#
+#@return the firs order derivative
+def deriv(features):
+	return convolve1d(features, [2,1,0,-1,-2], 0)
+	
+##concatenate the first order derivative to the features
+#
+#@param features the input features
+#
+#@return the features concatenated with the first order derivative
+def delta(features):
+	return numpy.concatenate((features, deriv(features)), 1)
+	
+##concatenate the first and second order derivative to the features
+#
+#@param features the input features
+#
+#@return the features concatenated with the first and second order derivative
+def ddelta(features):
+	deltafeat = deriv(features)
+	return numpy.concatenate((features, deltafeat, deriv(deltafeat)), 1)
+
     

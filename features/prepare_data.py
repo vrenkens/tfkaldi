@@ -18,7 +18,8 @@ import kaldiInterface
 #@param featdir directory where the features will be put
 #@param conf feature configuration
 #@param feat_type type of features to be computed, options are mfcc, fbank and ssc
-def prepare_data(datadir, featdir, conf, feat_type):
+#@param dynamic the type of dynamic information added, options are nodelta, delta and ddelta
+def prepare_data(datadir, featdir, conf, feat_type, dynamic):
 	
 	if not os.path.exists(featdir):
 		os.makedirs(featdir)
@@ -43,7 +44,7 @@ def prepare_data(datadir, featdir, conf, feat_type):
 	RateUtt = {utt: read_wav(wavfiles[utt]) for utt in wavfiles}
 		
 	#create a featureComputer
-	comp = feat.FeatureComputer(feat_type, conf)
+	comp = feat.FeatureComputer(feat_type, dynamic, conf)
 	
 	#compute all the features
 	for utt in wavfiles:

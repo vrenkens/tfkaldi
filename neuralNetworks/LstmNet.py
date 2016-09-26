@@ -14,7 +14,7 @@ import batchdispenser
 import ark
 
 ## a class for a neural network that can be used together with Kaldi
-class Nnet:
+class LstmNet(nnet):
 	#Nnet constructor
 	#
 	#@param conf nnet configuration
@@ -38,6 +38,8 @@ class Nnet:
 		#create a DNN
 		self.DNN = nnetgraph.LSTM_DNN('DNN', input_dim, num_labels, int(self.conf['num_hidden_layers']), int(self.conf['add_layer_period'])>0, int(self.conf['num_hidden_units']), self.conf['nonlin'], self.conf['l2_norm']=='True', float(self.conf['dropout']))
 
+		#self.DNN = nnetgraph.DNN('DNN', input_dim, num_labels, int(self.conf['num_hidden_layers']), int(self.conf['add_layer_period'])>0, #int(self.conf['num_hidden_units']), self.conf['nonlin'], self.conf['l2_norm']=='True', float(self.conf['dropout']))
+
 	## Train the neural network
 	#
 	#@param featdir directory where the training features are located (in feats.scp)
@@ -48,14 +50,15 @@ class Nnet:
 		reader = batchdispenser.FeatureReader(featdir + '/feats_shuffled.scp', featdir + '/cmvn.scp', featdir + '/utt2spk', int(self.conf['context_width']))
 
 		#create a batch dispenser
-		dispenser = batchdispenser.Batchdispenser(reader, int(self.conf['batch_size']), alifile, self.DNN.output_dim)
+		dispenser = batchdispenser.SeqBatchdispenser(reader, int(self.conf['batch_size']), alifile, self.DNN.output_dim)
 
 		#get the validation set
+		print('Creating batches.')
 		valid_batches = [dispenser.getBatch() for _ in range(int(self.conf['valid_batches']))]
 		dispenser.split()
-		if len(valid_batches)>0:
-			val_data = np.concatenate([val_batch[0] for val_batch in valid_batches])
-			val_labels = np.concatenate([val_batch[1] for val_batch in valid_batches])
+		if len(valid_batches) > 0:
+			val_data = val_batch[0])
+			val_labels = val_batch[1])
 		else:
 			val_data = None
 			val_labels = None
@@ -94,22 +97,12 @@ class Nnet:
 				trainer.restoreTrainer(self.conf['savedir'] + '/training/step' + str(step))
 
 			#do a validation step
-<<<<<<< HEAD
 			validation_loss = trainer.evaluate(val_data, val_labels)
 			print('validation loss at step %d: %f' %(step, validation_loss ))
 			validation_step = step
 			trainer.saveTrainer(self.conf['savedir'] + '/training/validated')
 			num_retries = 0
 
-=======
-			if val_data is not None:
-				validation_loss = trainer.evaluate(val_data, val_labels)
-				print('validation loss at step %d: %f' %(step, validation_loss ))
-				validation_step = step
-				trainer.saveTrainer(self.conf['savedir'] + '/training/validated')
-				num_retries = 0
-			
->>>>>>> 568297b0f4f3afe576a00b3b9d16ad6ca2339830
 			#start the training iteration
 			while step<num_steps:
 
@@ -133,16 +126,12 @@ class Nnet:
 					if self.conf['valid_adapt'] == 'True':
 						#if the loss increased, half the learning rate and go back to the previous validation step
 						if current_loss > validation_loss:
-<<<<<<< HEAD
 							if num_retries == int(self.conf['valid_retries']):
 								print('the validation loss is worse, terminating training')
 								break
 
 							print('the validation loss is worse, returning to the previously validated model with halved learning rate')
 
-=======
-						
->>>>>>> 568297b0f4f3afe576a00b3b9d16ad6ca2339830
 							#go back in the dispenser
 							for _ in range(step-validation_step):
 								dispenser.returnBatch()
@@ -151,13 +140,6 @@ class Nnet:
 							trainer.restoreTrainer(self.conf['savedir'] + '/training/validated')
 							trainer.halve_learning_rate()
 							step = validation_step
-							
-							if num_retries == int(self.conf['valid_retries']):
-								print('the validation loss is worse, terminating training')
-								break
-								
-							print('the validation loss is worse, returning to the previously validated model with halved learning rate')
-							
 							num_retries+=1
 
 						else:
@@ -190,51 +172,3 @@ class Nnet:
 
 			#save the final model
 			trainer.saveModel(self.conf['savedir'] + '/final')
-
-
-
-
-	##compute pseudo likelihoods the testing set
-	#
-	#@param featdir directory where the features are located (in feats.scp)
-	#@param decodir location where output will be stored (in feats.scp), cannot be the same as featdir
-	def decode(self, featdir, decodedir):
-		#create a feature reader
-		reader = batchdispenser.FeatureReader(featdir + '/feats.scp', featdir + '/cmvn.scp', featdir + '/utt2spk', int(self.conf['context_width']))
-
-		#remove ark file if it allready exists
-		if os.path.isfile(decodedir + '/feats.ark'):
-			os.remove(decodedir + '/feats.ark')
-
-		#open likelihood writer
-		writer = ark.ArkWriter(decodedir + '/feats.scp')
-
-		#create a decoder
-		decoder = nnetgraph.NnetDecoder(self.DNN)
-
-		#start tensorflow session
-		config = tf.ConfigProto()
-		config.gpu_options.allow_growth=True
-		with tf.Session(graph=decoder.graph, config=config) as session:
-
-			#load the model
-			decoder.restore(self.conf['savedir'] + '/final')
-
-			#feed the utterances one by one to the neural net
-			while True:
-				utt_id, utt_mat, looped = reader.getUtt()
-
-				if looped:
-					break
-
-				#compute predictions
-				output = decoder(utt_mat)
-
-				#floor the values to avoid problems with log
-				np.where(output == 0,np.finfo(float).eps,output)
-
-				#write the pseudo-likelihoods in kaldi feature format
-				writer.write_next_utt(decodedir + '/feats.ark', utt_id, np.log(output))
-
-		#close the writer
-		writer.close()

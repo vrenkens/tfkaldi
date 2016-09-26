@@ -60,7 +60,11 @@ class ArkReader(object):
 		m, rows = struct.unpack('<bi', ark_read_buffer.read(5))
 		n, cols = struct.unpack('<bi', ark_read_buffer.read(5))
 
-		tmp_mat = np.frombuffer(ark_read_buffer.read(rows * cols * 4), dtype=np.float32)
+		if header[1] == "F":
+			tmp_mat = np.frombuffer(ark_read_buffer.read(rows * cols * 4), dtype=np.float32)
+		elif header[1] == "D":
+			tmp_mat = np.frombuffer(ark_read_buffer.read(rows * cols * 8), dtype=np.float64)
+			
 		utt_mat = np.reshape(tmp_mat, (rows, cols))
 
 		ark_read_buffer.close()

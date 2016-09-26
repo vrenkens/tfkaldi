@@ -25,7 +25,7 @@ class KaldiGMM(object):
 		os.chdir(self.conf.get('directories','kaldi_egs'))
 		
 		#train the GMM
-		os.system('%s --cmd %s --config %s/config/%s %s %s %s %s %s' % (self.trainscript, self.conf.get('general','cmd'), current_dir, self.confFile, self.trainops, self.conf.get('directories','train_features') + '/' + self.conf.get('gmm-features','name'), self.conf.get('directories','language'), self.parentGmmLocation, self.conf.get('directories','expdir') + '/' + self.name))
+		os.system('%s --cmd %s --config %s/config/%s %s %s %s %s %s' % (self.trainscript, self.conf.get('general','cmd'), current_dir, self.confFile, self.trainops, self.conf.get('directories','train_features') + '/' + self.conf.get('gmm-features','name'), self.conf.get('directories','language'), self.parentGmmAlignments, self.conf.get('directories','expdir') + '/' + self.name))
 		
 		#build the decoding graphs
 		os.system('utils/mkgraph.sh %s %s %s %s/graph' % (self.graphopts, self.conf.get('directories','language_test'), self.conf.get('directories','expdir') + '/' + self.name, self.conf.get('directories','expdir') + '/' + self.name))
@@ -81,7 +81,7 @@ class KaldiGMM(object):
 		
 	##the path to the parent GMM model (empty for monophone GMM)
 	@abstractproperty
-	def parentGmmLocation(self):
+	def parentGmmAlignments(self):
 		pass
 	
 	##the extra options for GMM training
@@ -109,7 +109,7 @@ class MonoGmm(KaldiGMM):
 		return 'mono.conf'
 		
 	@property
-	def parentGmmLocation(self):
+	def parentGmmAlignments(self):
 		return ''
 	
 	@property
@@ -135,8 +135,8 @@ class TriGmm(KaldiGMM):
 		return 'tri.conf'
 		
 	@property
-	def parentGmmLocation(self):
-		return self.conf.get('directories','expdir') + '/' + self.conf.get('mono_gmm','name')
+	def parentGmmAlignments(self):
+		return self.conf.get('directories','expdir') + '/' + self.conf.get('mono_gmm','name') + '/ali'
 	
 	@property
 	def trainops(self):
@@ -161,12 +161,12 @@ class LdaGmm(KaldiGMM):
 		return 'lda_mllt.conf'
 		
 	@property
-	def parentGmmLocation(self):
-		return self.conf.get('directories','expdir') + '/' + self.conf.get('tri_gmm','name')
+	def parentGmmAlignments(self):
+		return self.conf.get('directories','expdir') + '/' + self.conf.get('tri_gmm','name') + '/ali'
 	
 	@property
 	def trainops(self):
-		return '--context-opts "--context_width=%s"'%self.conf.get('lda_mllt','context_width') + ' ' +  self.conf.get('tri_gmm','num_leaves') + ' ' + self.conf.get('tri_gmm','tot_gauss')
+		return '--context-opts "--context_width=%s"'%self.conf.get('lda_mllt','context_width') + ' ' +  self.conf.get('lda_mllt','num_leaves') + ' ' + self.conf.get('lda_mllt','tot_gauss')
 		
 	@property
 	def graphopts(self):

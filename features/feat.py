@@ -13,8 +13,9 @@ class FeatureComputer(object):
 	##FeatureComputer constructor
 	#
 	#@param featureType string containing the type of features, optione are 'fbank', 'mfcc' and 'ssc'
+	#@param dynamic the type of dynamic information added, options are nodelta, delta and ddelta
 	#@param conf the feature configuration
-	def __init__(self, featureType, conf):
+	def __init__(self, featureType, dynamic, conf):
 		if featureType == 'fbank':
 			self.compFeat = base.logfbank
 		elif featureType == 'mfcc':
@@ -23,6 +24,15 @@ class FeatureComputer(object):
 			self.compFeat = base.ssc
 		else:
 			raise Exception('unknown feature type')
+			
+		if dynamic == 'nodelta':
+			self.compDyn = lambda x: x
+		elif dynamic == 'delta':
+			self.compDyn = base.delta
+		elif dynamic == 'ddelta':
+			self.compDyn = base.ddelta
+		else:
+			raise Exception('unknown dynamic type')
 			
 		self.conf = conf
 			
@@ -44,6 +54,9 @@ class FeatureComputer(object):
 		#append the energy if requested
 		if self.conf['include_energy'] == 'True':
 			feat = np.append(feat,energy[:,np.newaxis],1)
+			
+		#add the dynamic information
+		feat = self.compDyn(feat)
 			
 		return feat
 
