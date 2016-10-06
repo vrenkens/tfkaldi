@@ -21,13 +21,13 @@ class BatchDispenser(metaclass=ABCMeta):
         '''abstract normalize targets function. Must be overwritten
            for different data types, i.e. phonemes or letters. Here
            phonemes can be folded or unwanted letters removed.'''
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def encode(self, char_lst):
         '''This method defines the the way the targets are encoded.
         It must be overwritten in every child class.'''
-        pass
+        raise NotImplementedError
 
     def __init__(self, featureReader, size, text_path, num_labels, max_time):
         '''Abstract constructor for nonexisting general data sets.'''
@@ -85,13 +85,22 @@ class BatchDispenser(metaclass=ABCMeta):
 
         return batch_inputs, sparse_target_data, max_steps
 
-    def split(self):
+    def split_reader(self, utt_no):
         '''
-        split of the part that has allready been read by the batchdispenser,
+        remove a number of utterances from thie feature reader in this
+        batch dispenser and return a feature reader with utt_no
+        utterances.
+        '''
+        return self.featureReader.split_utt(utt_no)
+
+
+    def split_read(self):
+        '''
+        split off the part that has allready been read by the batchdispenser,
         this can be used to read a validation set and
-        then split it of from the rest
+        then split it off from the rest
         '''
-        self.featureReader.split()
+        self.featureReader.split_read()
 
     def skip_batch(self):
         '''skip a batch'''
@@ -124,7 +133,7 @@ class BatchDispenser(metaclass=ABCMeta):
     def get_num_utt(self):
         '''@return the number of utterances
             the current instance can dinspense.'''
-        return len(self.text_dict)
+        return self.featureReader.get_utt_no()
 
     @staticmethod
     def target_list_to_sparse_tensor(target_list):

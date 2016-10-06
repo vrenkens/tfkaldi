@@ -73,32 +73,61 @@ n_features = 40
 #n_hidden = 164
 #n_hidden = 180
 n_hidden = 156
-n_classes = 40 #39 phonemes, plus the "blank" for CTC
 
 
-####Load data
+
+####Load timit data
+timit = False
 print('Loading data')
-max_time_steps = 777
-TIMIT_LABELS = 39
-TIMIT_PATH = "/esat/spchtemp/scratch/moritz/dataSets/timit2/"
-TRAIN = "/train/40fbank"
-PHONEMES = True
+if timit:
+    max_time_steps = 777
+    TIMIT_LABELS = 39
+    TIMIT_PATH = "/esat/spchtemp/scratch/moritz/dataSets/timit2/"
+    TRAIN = "/train/40fbank"
+    PHONEMES = True
 
-trainDispenser = generate_dispenser(TIMIT_PATH, TRAIN, TIMIT_LABELS,
-                                    462, PHONEMES)
+    trainDispenser = generate_dispenser(TIMIT_PATH, TRAIN, TIMIT_LABELS,
+                                        462, PHONEMES)
 
-VAL = "dev/40fbank"
-valDispenser = generate_dispenser(TIMIT_PATH, VAL, TIMIT_LABELS,
-                                  400, PHONEMES)
+    VAL = "dev/40fbank"
+    valDispenser = generate_dispenser(TIMIT_PATH, VAL, TIMIT_LABELS,
+                                      400, PHONEMES)
 
-TEST = "test/40fbank"
-testDispenser = generate_dispenser(TIMIT_PATH, TEST, TIMIT_LABELS,
-                                   192, PHONEMES)
+    TEST = "test/40fbank"
+    testDispenser = generate_dispenser(TIMIT_PATH, TEST, TIMIT_LABELS,
+                                       192, PHONEMES)
 
 
-BATCH_COUNT = trainDispenser.get_batch_count()
-BATCH_COUNT_VAL = valDispenser.get_batch_count()
-BATCH_COUNT_TEST = testDispenser.get_batch_count()
+    BATCH_COUNT = trainDispenser.get_batch_count()
+    BATCH_COUNT_VAL = valDispenser.get_batch_count()
+    BATCH_COUNT_TEST = testDispenser.get_batch_count()
+    
+    n_classes = TIMIT_LABELS + 1 #39 phonemes, plus the "blank" for CTC
+else:
+    max_time_steps = 2037
+    AURORA_LABELS = 33
+    AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
+    TRAIN = "/train/40fbank"
+    PHONEMES = False
+
+    trainDispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
+                                        793, PHONEMES)
+    TEST = "test/40fbank"
+    valDispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
+                                       793, PHONEMES)
+                                       
+    testDispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
+                                           606, PHONEMES)
+
+    testFeatureReader = valDispenser.split_reader(606)
+    testDispenser.featureReader = testFeatureReader
+
+    BATCH_COUNT = trainDispenser.get_batch_count()
+    BATCH_COUNT_VAL = valDispenser.get_batch_count()
+    BATCH_COUNT_TEST = testDispenser.get_batch_count()
+    print(BATCH_COUNT, BATCH_COUNT_VAL, BATCH_COUNT_TEST)
+    n_classes = AURORA_LABELS + 1 #33 letters, plus the "blank" for CTC
+
 
 
 def create_dict(batched_data_arg, noise_bool):
@@ -222,8 +251,6 @@ with graph.as_default():
 
     error_rate = tf.reduce_mean(tf.edit_distance(hypothesis, target_y, normalize=True))
 
-#from IPython.core.debugger import Tracer
-#Tracer()()
 
 ####Run session
 restarts = 0
@@ -288,7 +315,7 @@ with tf.Session(graph=graph) as session:
         epoch_error_rate = batch_errors.sum()
         epoch_error_lst.append(epoch_error_rate / BATCH_COUNT)
         epoch_loss_lst.append(batch_losses.sum() / BATCH_COUNT)
-        print('error rate:', epoch_error_rate)
+        print('error rate:', epoch_error_rate / BATCH_COUNT)
 
         feed_dict, _ = create_dict(valDispenser.get_batch(), False)
         vl, ver = session.run([loss, error_rate], feed_dict=feed_dict)

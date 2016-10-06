@@ -1,4 +1,6 @@
+from copy import copy
 import numpy as np
+
 
 import prepare.ark as ark
 import prepare.kaldiInterface as kaldiInterface
@@ -75,6 +77,16 @@ class FeatureReader:
         '''
         return self.reader.read_previous_scp()
 
-    def split(self):
-        ''' split of the features that have been read so far'''
+    def split_read(self):
+        ''' split off the features that have been read so far'''
         self.reader.split()
+
+    def split_utt(self,num_utt):
+        '''Remove num_utt utterances from the feature reader and
+            place them in a new reader object.'''
+        newFeatureReader = copy(self)
+        newFeatureReader.reader = self.reader.split_utt(num_utt)
+        return newFeatureReader
+
+    def get_utt_no(self):
+        return len(self.reader.scp_data)

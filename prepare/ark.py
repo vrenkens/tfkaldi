@@ -41,6 +41,7 @@ class ArkReader(object):
     def __init__(self, scp_path):
         ##ArkReader constructor
         #@param scp_path path to the .scp file
+        self.scp_path = scp_path
         self.scp_position = 0
         fin = open(scp_path, "r")
         self.utt_ids = []
@@ -53,6 +54,7 @@ class ArkReader(object):
             self.scp_data.append((path, pos))
             line = fin.readline()
         fin.close()
+
 
     def read_utt_data(self, index):
         '''
@@ -147,14 +149,34 @@ class ArkReader(object):
         '''
         return self.read_utt_data(self.utt_ids.index(utt_id))
 
-    def split(self):
+    def split_read(self):
         '''
-        Split of the data that was read so far
+        Split off the data that was read so far
         '''
         self.scp_data = self.scp_data[self.scp_position:-1]
         self.utt_ids = self.utt_ids[self.scp_position:-1]
 
 
+    def split_utt(self, num_utt):
+        '''
+        Split a reader in two parts with the new reader recieving
+        num_utt utterances in total.
+        @param num_utt: utterance number for the the new reader.
+        '''
+        total = len(self.scp_data)
+        split_pos = total - num_utt
+
+        newReader = ArkReader(self.scp_path)
+        newReader.scp_data = self.scp_data[split_pos:]
+        newReader.utt_ids = self.utt_ids[split_pos:]
+
+        self.scp_data = self.scp_data[:split_pos]
+        self.utt_ids = self.utt_ids[:split_pos]
+
+        print("total:", total)
+        print("split:", len(self.scp_data), len(newReader.scp_data) )
+
+        return newReader
 
 
 class ArkWriter(object):
