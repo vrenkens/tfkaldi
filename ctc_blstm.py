@@ -6,7 +6,7 @@ on the TIMIT data set from chapter 7 of Alex Graves's book (Graves, Alex. Superv
 Labelling with Recurrent Neural Networks, volume 385 of Studies in Computational Intelligence.
 Springer, 2012.), minus the early stopping.
 
-Authors: mortiz wolter and Jon Rein
+Authors: mortiz wolter
 '''
 
 # fix some pylint stuff
@@ -14,7 +14,7 @@ Authors: mortiz wolter and Jon Rein
 # pylint: disable=E1101
 # fixes the unrecognized state_is_tuple
 # pylint: disable=E1123
-#the retarded pylint import problem.
+# the retarded pylint import problem.
 # pylint: disable=E0401
 
 from __future__ import absolute_import
@@ -28,13 +28,11 @@ import socket
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.python.ops import ctc_ops as ctc
-from tensorflow.python.ops import rnn_cell
-from tensorflow.python.ops.rnn import bidirectional_rnn
 import numpy as np
 from prepare.batch_dispenser import PhonemeTextDispenser
 from prepare.batch_dispenser import UttTextDispenser
 from prepare.feature_reader import FeatureReader
-
+from neuralnetworks.nnet_layer import BlstmLayer
 
 def generate_dispenser(data_path, set_kind, label_no, batch_size, phonemes):
     ''' Instatiate a batch dispenser object using the data
@@ -77,7 +75,7 @@ n_hidden = 156
 
 
 ####Load timit data
-timit = False
+timit = True
 print('Loading data')
 if timit:
     max_time_steps = 777
@@ -101,7 +99,7 @@ if timit:
     BATCH_COUNT = trainDispenser.get_batch_count()
     BATCH_COUNT_VAL = valDispenser.get_batch_count()
     BATCH_COUNT_TEST = testDispenser.get_batch_count()
-    
+
     n_classes = TIMIT_LABELS + 1 #39 phonemes, plus the "blank" for CTC
 else:
     max_time_steps = 2037
@@ -114,10 +112,10 @@ else:
                                         793, PHONEMES)
     TEST = "test/40fbank"
     valDispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                       793, PHONEMES)
-                                       
+                                      793, PHONEMES)
+
     testDispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                           606, PHONEMES)
+                                       606, PHONEMES)
 
     testFeatureReader = valDispenser.split_reader(606)
     testDispenser.featureReader = testFeatureReader
@@ -127,7 +125,6 @@ else:
     BATCH_COUNT_TEST = testDispenser.get_batch_count()
     print(BATCH_COUNT, BATCH_COUNT_VAL, BATCH_COUNT_TEST)
     n_classes = AURORA_LABELS + 1 #33 letters, plus the "blank" for CTC
-
 
 
 def create_dict(batched_data_arg, noise_bool):
@@ -146,36 +143,6 @@ def create_dict(batched_data_arg, noise_bool):
                      seq_lengths: batch_seq_lengths,
                      noise_wanted: noise_bool}
     return res_feed_dict, batch_seq_lengths
-
-def blstm(input_list_fun, weights_blstm_fun, biases_blstm_fun):
-    '''Define a simple bidicretional blstm layer with linear
-       output nodes.'''
-
-    initializer = tf.random_normal_initializer(0.0, 0.1)
-    #initializer = tf.random_normal_initializer(0.0,np.sqrt(2.0 / (2*n_hidden)))
-    initializer = None
-    forward_h1 = rnn_cell.LSTMCell(n_hidden,
-                                   use_peepholes=True,
-                                   state_is_tuple=True,
-                                   initializer=initializer)
-    backward_h1 = rnn_cell.LSTMCell(n_hidden,
-                                    use_peepholes=True,
-                                    state_is_tuple=True,
-                                    initializer=initializer)
-    #compute the bidirectional RNN output throw away the states.
-    #the output is a length T list consiting of
-    # ([time][batch][cell_fw.output_size + cell_bw.output_size]) tensors.
-    list_h1, _, _ = bidirectional_rnn(forward_h1, backward_h1, input_list_fun,
-                                      dtype=tf.float32, scope='BDLSTM_H1')
-
-    blstm_logits = [tf.matmul(T, weights_blstm_fun) + biases_blstm_fun for T in list_h1]
-
-    print("length logit list:", len(blstm_logits))
-    print("logit list element shape:", tf.Tensor.get_shape(blstm_logits[0]))
-    #blstm_logits = [tf.nn.softmax(tf.matmul(T, weights_blstm_fun) +
-    #                biases_blstm_fun) for T in list_h1]
-    #blstm_logits = [tf.nn.softmax(T) for T in blstm_logits]
-    return blstm_logits
 
 ####Define graph
 print('Defining graph')
@@ -197,13 +164,7 @@ with graph.as_default():
     seq_lengths = tf.placeholder(tf.int32, shape=None)
 
     #### Weights & biases
-    weights_blstm = tf.Variable(tf.random_normal([n_hidden*2, n_classes],
-                                                 mean=0.0, stddev=0.1,
-                                                 dtype=tf.float32, seed=None,
-                                                 name=None))
-    #weights_blstm = tf.Variable(tf.truncated_normal([n_hidden*2, n_classes],
-    #                                               stddev=np.sqrt(2.0 / (2*n_hidden))))
-    biases_blstm = tf.Variable(tf.zeros([n_classes]))
+    blstmLayer = BlstmLayer(n_features, n_hidden, 0.1, 'BLSTM-Layer')
 
     #determine if noise is wanted in this tree.
     def add_noise():
@@ -219,7 +180,7 @@ with graph.as_default():
     blstm_input_list = tf.cond(noise_wanted, add_noise, do_nothing)
 
     #### Network
-    logits = blstm(blstm_input_list, weights_blstm, biases_blstm)
+    logits = blstmLayer(blstm_input_list, seq_lengths)
     #### Optimizing
     # logits3d (max_time_steps, batch_size, n_classes), pack puts the list into a big matrix.
     #add the weight and bias l2 norms to the loss.
@@ -332,16 +293,13 @@ with tf.Session(graph=graph) as session:
             val_mean = np.mean(epoch_error_lst_val[(epoch - interval):epoch])
             train_mean = np.mean(epoch_error_lst[(epoch - interval):epoch])
             test_val = val_mean - train_mean - 0.02
-            print('Overfit condition value:', test_val)
-            if test_val > 0:
+            print('Overfit condition value:', test_val,
+                  'remaining iterations: ', MAX_N_EPOCHS - epoch)
+            if (test_val > 0) or (epoch > MAX_N_EPOCHS):
                 continue_training = False
                 print("stopping the training.")
         else:
             print("validation errors", epoch_error_lst_val)
-
-
-        if epoch > MAX_N_EPOCHS:
-            continue_training = False
 
     #run the network on the test data set.
     feed_dict, _ = create_dict(testDispenser.get_batch(), False)
