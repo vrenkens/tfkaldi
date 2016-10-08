@@ -1,20 +1,9 @@
-'''
-Example of a single-layer bidirectional long short-term memory network trained with
-connectionist temporal classification to predict phoneme sequences from n_features x nFrames
-arrays of Mel-Frequency Cepstral Coefficients.  This is basically a recreation of an experiment
-on the TIMIT data set from chapter 7 of Alex Graves's book (Graves, Alex. Supervised Sequence
-Labelling with Recurrent Neural Networks, volume 385 of Studies in Computational Intelligence.
-Springer, 2012.), minus the early stopping.
-
-Authors: mortiz wolter
-'''
-
 # fix some pylint stuff
 # fixes the np.random error
 # pylint: disable=E1101
 # fixes the unrecognized state_is_tuple
 # pylint: disable=E1123
-# fix the pylint import problem.
+# the retarded pylint import problem.
 # pylint: disable=E0401
 
 from __future__ import absolute_import
@@ -27,12 +16,15 @@ import socket
 
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from tensorflow.python.ops import ctc_ops as ctc
 import numpy as np
 from prepare.batch_dispenser import PhonemeTextDispenser
 from prepare.batch_dispenser import UttTextDispenser
 from prepare.feature_reader import FeatureReader
-from neuralnetworks.nnet_layer import BlstmLayer
+from neuralnetworks.nnet_graph import BLSTMNet
+from neuralnetworks.nnet_trainer import Trainer
+
+from IPython.core.debugger import Tracer; debug_here = Tracer()
+
 
 def generate_dispenser(data_path, set_kind, label_no, batch_size, phonemes):
     ''' Instatiate a batch dispenser object using the data
@@ -127,6 +119,16 @@ else:
     n_classes = AURORA_LABELS + 1 #33 letters, plus the "blank" for CTC
 
 
+#set up network and trainer.
+LEARNING_RATE_DECAY = 0
+
+blstmCtcGraph = BLSTMNet('ctc_blstm', n_features, n_hidden, max_time_steps,
+             n_classes, INPUT_NOISE_STD)
+trainer = Trainer(blstmCtcGraph, LEARNING_RATE, LEARNING_RATE_DECAY,
+                     INPUT_NOISE_STD, OMEGA)
+
+#debug_here()
+
 def create_dict(batched_data_arg, noise_bool):
     '''Create an input dictonary to be fed into the tree.
     @return:
@@ -136,90 +138,23 @@ def create_dict(batched_data_arg, noise_bool):
 
     batch_inputs, batch_trgt_sparse, batch_seq_lengths = batched_data_arg
     batch_trgt_ixs, batch_trgt_vals, batch_trgt_shape = batch_trgt_sparse
-    res_feed_dict = {input_x: batch_inputs,
-                     target_ixs: batch_trgt_ixs,
-                     target_vals: batch_trgt_vals,
-                     target_shape: batch_trgt_shape,
-                     seq_lengths: batch_seq_lengths,
-                     noise_wanted: noise_bool}
+    res_feed_dict = {blstmCtcGraph.input_x: batch_inputs,
+                     trainer.target_ixs: batch_trgt_ixs,
+                     trainer.target_vals: batch_trgt_vals,
+                     trainer.target_shape: batch_trgt_shape,
+                     blstmCtcGraph.seq_lengths: batch_seq_lengths,
+                     blstmCtcGraph.noise_wanted: noise_bool}
     return res_feed_dict, batch_seq_lengths
 
-####Define graph
-print('Defining graph')
-graph = tf.Graph()
-with graph.as_default():
-    #Variable wich determines if the graph is for training (it true add noise)
-    noise_wanted = tf.placeholder(tf.bool, shape=[], name='add_noise')
 
-    #### Graph input shape=(max_time_steps, batch_size, n_features),  but the first two change.
-    input_x = tf.placeholder(tf.float32, shape=(max_time_steps, None, n_features))
-    #Prep input data to fit requirements of rnn.bidirectional_rnn
-    #Split to get a list of 'n_steps' tensors of shape (batch_size, n_features)
-    input_list = tf.unpack(input_x, num=max_time_steps, axis=0)
-    #Target indices, values and shape used to create a sparse tensor.
-    target_ixs = tf.placeholder(tf.int64, shape=None)    #indices
-    target_vals = tf.placeholder(tf.int32, shape=None)   #vals
-    target_shape = tf.placeholder(tf.int64, shape=None)  #shape
-    target_y = tf.SparseTensor(target_ixs, target_vals, target_shape)
-    seq_lengths = tf.placeholder(tf.int32, shape=None)
-
-    #### Weights & biases
-    blstmLayer = BlstmLayer(n_features, n_hidden, 0.1, 'BLSTM-Layer')
-
-    #determine if noise is wanted in this tree.
-    def add_noise():
-        '''Operation used add noise during training'''
-        return [tf.random_normal(tf.shape(T), 0.0, INPUT_NOISE_STD)
-                + T for T in input_list]
-    def do_nothing():
-        '''Operation used to select noise free inputs during validation
-        and testing'''
-        return input_list
-    # tf cond applys the first operation if noise_wanted is true and
-    # does nothing it the variable is false.
-    blstm_input_list = tf.cond(noise_wanted, add_noise, do_nothing)
-
-    #### Network
-    logits = blstmLayer(blstm_input_list, seq_lengths)
-    #### Optimizing
-    # logits3d (max_time_steps, batch_size, n_classes), pack puts the list into a big matrix.
-    #add the weight and bias l2 norms to the loss.
-    trainable_weights = tf.trainable_variables()
-    weight_loss = 0
-    for trainable in trainable_weights:
-        weight_loss += tf.nn.l2_loss(trainable)
-
-    logits3d = tf.pack(logits)
-    print("logits 3d shape:", tf.Tensor.get_shape(logits3d))
-    loss = tf.reduce_mean(ctc.ctc_loss(logits3d, target_y, seq_lengths)) + OMEGA*weight_loss
-    #uncapped_optimizer = tf.train.MomentumOptimizer(LEARNING_RATE, MOMENTUM)#.minimize(loss)
-    uncapped_optimizer = tf.train.AdamOptimizer(LEARNING_RATE) #.minimize(loss)
-
-    #gradient clipping:
-    gvs = uncapped_optimizer.compute_gradients(loss)
-    capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
-    optimizer = uncapped_optimizer.apply_gradients(capped_gvs)
-
-    #### Evaluating
-    logits_max_test = tf.slice(tf.argmax(logits3d, 2), [0, 0], [seq_lengths[0], 1])
-    #predictions = ctc.ctc_beam_search_decoder(logits3d, seq_lengths, beam_width = 100)
-    predictions = ctc.ctc_greedy_decoder(logits3d, seq_lengths)
-    print("predictions", type(predictions))
-    print("predictions[0]", type(predictions[0]))
-    print("len(predictions[0])", len(predictions[0]))
-    print("predictions[0][0]", type(predictions[0][0]))
-    hypothesis = tf.to_int32(predictions[0][0])
-
-    error_rate = tf.reduce_mean(tf.edit_distance(hypothesis, target_y, normalize=True))
-
-
+    
 ####Run session
 restarts = 0
 epoch_loss_lst = []
 epoch_error_lst = []
 epoch_error_lst_val = []
 
-with tf.Session(graph=graph) as session:
+with tf.Session(graph=trainer.nnetGraph.tf_graph) as session:
     print('Initializing')
     tf.initialize_all_variables().run()
 
@@ -230,8 +165,8 @@ with tf.Session(graph=graph) as session:
     for batch in range(0, BATCH_COUNT):
         feed_dict, batchSeqLengths = create_dict(trainDispenser.get_batch(),
                                                  True)
-        l, wl, er, lmt = session.run([loss, weight_loss,
-                                      error_rate, logits_max_test],
+        l, wl, er, lmt = session.run([trainer.loss, trainer.weight_loss,
+                                      trainer.error_rate, trainer.logits_max_test],
                                      feed_dict=feed_dict)
         print(np.unique(lmt)) #unique argmax values of first sample in batch;
         # should be blank for a while, then spit out target values
@@ -246,7 +181,7 @@ with tf.Session(graph=graph) as session:
     print('Untrained error rate:', epoch_error_rate)
 
     feed_dict, _ = create_dict(valDispenser.get_batch(), False)
-    vl, ver = session.run([loss, error_rate], feed_dict=feed_dict)
+    vl, ver = session.run([trainer.loss, trainer.error_rate], feed_dict=feed_dict)
     print("untrained validation loss: ", vl, " validation error rate", ver)
     epoch_error_lst_val.append(ver)
 
@@ -261,9 +196,11 @@ with tf.Session(graph=graph) as session:
         for batch in range(0, BATCH_COUNT):
             feed_dict, batchSeqLengths = create_dict(trainDispenser.get_batch(),
                                                      True)
-            _, l, wl, er, lmt = session.run([optimizer, loss, weight_loss,
-                                             error_rate, logits_max_test],
-                                            feed_dict=feed_dict)
+            _, l, wl, er, lmt = session.run([trainer.optimizer, trainer.loss,
+                                             trainer.weight_loss,
+                                             trainer.error_rate,
+                                             trainer.logits_max_test],
+                                             feed_dict=feed_dict)
             print(np.unique(lmt)) #print unique argmax values of first
                                   #sample in batch; should be
                                   #blank for a while, then spit
@@ -279,7 +216,8 @@ with tf.Session(graph=graph) as session:
         print('error rate:', epoch_error_rate / BATCH_COUNT)
 
         feed_dict, _ = create_dict(valDispenser.get_batch(), False)
-        vl, ver = session.run([loss, error_rate], feed_dict=feed_dict)
+        vl, ver = session.run([trainer.loss, trainer.error_rate],
+                               feed_dict=feed_dict)
         print("validation loss: ", vl, " validation error rate", ver)
         epoch_error_lst_val.append(ver)
 
@@ -303,7 +241,8 @@ with tf.Session(graph=graph) as session:
 
     #run the network on the test data set.
     feed_dict, _ = create_dict(testDispenser.get_batch(), False)
-    tl, ter = session.run([loss, error_rate], feed_dict=feed_dict)
+    tl, ter = session.run([trainer.loss, trainer.error_rate],
+                           feed_dict=feed_dict)
     print("test loss: ", tl, " test error rate", ter)
 
 filename = "saved/savedValsBLSTMAdam." + socket.gethostname() + ".pkl"

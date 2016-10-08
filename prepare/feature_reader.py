@@ -3,7 +3,7 @@ import numpy as np
 
 
 import prepare.ark as ark
-import prepare.kaldiInterface as kaldiInterface
+import prepare.kaldi_interface as kaldiInterface
 
 
 def apply_cmvn(utt, stats):
