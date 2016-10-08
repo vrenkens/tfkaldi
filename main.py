@@ -3,7 +3,7 @@
 # pylint: disable=E1101
 # fixes the unrecognized state_is_tuple
 # pylint: disable=E1123
-# the retarded pylint import problem.
+# fix the pylint import problem.
 # pylint: disable=E0401
 
 from __future__ import absolute_import
@@ -20,7 +20,7 @@ import numpy as np
 from prepare.batch_dispenser import PhonemeTextDispenser
 from prepare.batch_dispenser import UttTextDispenser
 from prepare.feature_reader import FeatureReader
-from neuralnetworks.nnet_graph import BLSTMNet
+from neuralnetworks.nnet_graph import BlstmCtcModel
 from neuralnetworks.nnet_trainer import Trainer
 
 from IPython.core.debugger import Tracer; debug_here = Tracer()
@@ -122,10 +122,9 @@ else:
 #set up network and trainer.
 LEARNING_RATE_DECAY = 0
 
-blstmCtcGraph = BLSTMNet('ctc_blstm', n_features, n_hidden, max_time_steps,
+blstmCtcGraph = BlstmCtcModel('ctc_blstm', n_features, n_hidden, max_time_steps,
              n_classes, INPUT_NOISE_STD)
-trainer = Trainer(blstmCtcGraph, LEARNING_RATE, LEARNING_RATE_DECAY,
-                     INPUT_NOISE_STD, OMEGA)
+trainer = Trainer(blstmCtcGraph, LEARNING_RATE, LEARNING_RATE_DECAY, OMEGA)
 
 #debug_here()
 
@@ -147,14 +146,13 @@ def create_dict(batched_data_arg, noise_bool):
     return res_feed_dict, batch_seq_lengths
 
 
-    
 ####Run session
 restarts = 0
 epoch_loss_lst = []
 epoch_error_lst = []
 epoch_error_lst_val = []
 
-with tf.Session(graph=trainer.nnetGraph.tf_graph) as session:
+with tf.Session(graph=trainer.model.tf_graph) as session:
     print('Initializing')
     tf.initialize_all_variables().run()
 
