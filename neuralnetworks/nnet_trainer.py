@@ -2,6 +2,7 @@
 # fix the pylint import problem.
 # pylint: disable=E0401
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops import ctc_ops as ctc
 from custompython.lazy_decorator import lazy_property
@@ -12,14 +13,11 @@ class Trainer(object):
     #NnetTrainer constructor, creates the training graph
     #
     #@param nnetgraph an nnetgraph object for the neural net that will be used for decoding
-    #@param init_learning_rate the initial learning rate
-    #@param learning_rate_decay the parameter for exponential learning rate decay
-    #@param num_steps the total number of steps that will be taken
-    def __init__(self, model, learning_rate,
-                 learning_rate_DECAY, OMEGA):
+    #@param learning_rate the initial learning rate
+    def __init__(self, model, learning_rate, omega):
         #store the network graph
         self.learning_rate = learning_rate
-        self.OMEGA = OMEGA
+        self.omega = omega
         self.model = model
         self.weight_loss = 0
         with self.model.tf_graph.as_default():
@@ -30,7 +28,7 @@ class Trainer(object):
             self.target_vals = tf.placeholder(tf.int32, shape=None)   #vals
             self.target_shape = tf.placeholder(tf.int64, shape=None)  #shape
             self.target = tf.SparseTensor(self.target_ixs, self.target_vals,
-                                     self.target_shape)
+                                          self.target_shape)
 
             # Make sure all properties are added to the trainer object upon
             # initialization.
@@ -50,15 +48,13 @@ class Trainer(object):
 
         loss = tf.reduce_mean(ctc.ctc_loss(self.model.logits, self.target,
                                            self.model.seq_lengths)) \
-                                           + self.OMEGA*self.weight_loss
+                                           + self.omega*self.weight_loss
         return loss
 
 
     @lazy_property
     def clipped_optimizer(self):
         #### Optimizing
-        #uncapped_optimizer = tf.train.MomentumOptimizer(learning_rate,
-                                                # MOMENTUM)#.minimize(loss)
         uncapped_optimizer = tf.train.AdamOptimizer(self.learning_rate) #.minimize(loss)
 
         #gradient clipping:
@@ -70,14 +66,83 @@ class Trainer(object):
     @lazy_property
     def logits_max_test(self):
         return tf.slice(tf.argmax(self.model.logits, 2), [0, 0],
-                               [self.model.seq_lengths[0], 1])
+                        [self.model.seq_lengths[0], 1])
 
     @lazy_property
     def error_rate(self):
         return tf.reduce_mean(tf.edit_distance(self.model.hypothesis,
                                                self.target,
                                                normalize=True))
-    
-    @lazy_property
-    def halve_learning_rate(self):
-        self.learning_rate = self.learning_rate/2
+
+
+    def update(self, batched_data_list, session):
+        '''
+        Use the trainer to apply a training data batch, compute the
+        gradient and update the model in the trainer.
+        This command must be executed from within a session.
+        '''
+        batch_losses = np.zeros(len(batched_data_list))
+        batch_errors = np.zeros(len(batched_data_list))
+        for no, batch in enumerate(batched_data_list):
+            feed_dict, batch_seq_lengths = self.create_dict(batch, True)
+            _, l, wl, er, lmt = session.run([self.optimizer, self.loss,
+                                             self.weight_loss,
+                                             self.error_rate,
+                                             self.logits_max_test],
+                                            feed_dict=feed_dict)
+            print(np.unique(lmt)) #print unique argmax values of first
+                                  #sample in batch; should be
+                                  #blank for a while, then spit
+                                  #out target values
+            if (no % 1) == 0:
+                print('Minibatch loss:', l, "weight loss:", wl)
+                print('Minibatch error rate:', er)
+            batch_errors[no] = er
+            batch_losses[no] = l
+        epoch_error_rate = batch_errors.sum() / len(batched_data_list)
+        epoch_loss = batch_losses.sum() / len(batched_data_list)
+
+        return epoch_loss, epoch_error_rate
+
+
+    def evaluate(self, batched_data_list, session):
+        '''
+        Evaluate model performance without applying gradients.
+        '''
+        batch_losses = np.zeros(len(batched_data_list))
+        batch_errors = np.zeros(len(batched_data_list))
+        for no, batch in enumerate(batched_data_list):
+            feed_dict, batch_seq_lengths = self.create_dict(batch, True)
+            l, wl, er = session.run([self.loss,
+                                     self.weight_loss,
+                                     self.error_rate],
+                                    feed_dict=feed_dict)
+            if (no % 1) == 0:
+                print('Minibatch loss:', l, "weight loss:", wl)
+                print('Minibatch error rate:', er)
+            batch_errors[no] = er
+            batch_losses[no] = l
+        eval_error_rate = batch_errors.sum() / len(batched_data_list)
+        eval_loss = batch_losses.sum() / len(batched_data_list)
+        return eval_loss, eval_error_rate
+
+
+    def create_dict(self, batch, noise_bool):
+        '''Create an input dictonary to be fed into the tree.
+        @return:
+        The dicitonary containing the input numpy arrays,
+        the three sparse vector data components and the
+        sequence legths of each utterance.'''
+
+        batch_inputs, batch_trgt_sparse, batch_seq_lengths = batch
+        batch_trgt_ixs, batch_trgt_vals, batch_trgt_shape = batch_trgt_sparse
+        res_feed_dict = {self.model.input_x: batch_inputs,
+                         self.target_ixs: batch_trgt_ixs,
+                         self.target_vals: batch_trgt_vals,
+                         self.target_shape: batch_trgt_shape,
+                         self.model.seq_lengths: batch_seq_lengths,
+                         self.model.noise_wanted: noise_bool}
+        return res_feed_dict, batch_seq_lengths
+        
+    def initialize(self):
+        tf.initialize_all_variables().run()

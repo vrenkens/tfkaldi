@@ -87,7 +87,6 @@ class BlstmCtcModel(NnetGraph):
         def do_nothing():
             '''Operation used to select noise free inputs during validation
             and testing'''
-            print('no noise')
             return self.input_list
         # tf cond applys the first operation if noise_wanted is true and
         # does nothing it the variable is false.

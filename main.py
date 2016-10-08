@@ -124,7 +124,7 @@ LEARNING_RATE_DECAY = 0
 
 blstmCtcGraph = BlstmCtcModel('ctc_blstm', n_features, n_hidden, max_time_steps,
              n_classes, INPUT_NOISE_STD)
-trainer = Trainer(blstmCtcGraph, LEARNING_RATE, LEARNING_RATE_DECAY, OMEGA)
+trainer = Trainer(blstmCtcGraph, LEARNING_RATE, OMEGA)
 
 #debug_here()
 
@@ -157,68 +157,40 @@ with tf.Session(graph=trainer.model.tf_graph) as session:
     tf.initialize_all_variables().run()
 
     #check untrained performance.
-    batch_losses = np.zeros(BATCH_COUNT)
-    batch_errors = np.zeros(BATCH_COUNT)
-    batch_rand_ixs = np.array(range(0, BATCH_COUNT))
+    input_batches = []
     for batch in range(0, BATCH_COUNT):
-        feed_dict, batchSeqLengths = create_dict(trainDispenser.get_batch(),
-                                                 True)
-        l, wl, er, lmt = session.run([trainer.loss, trainer.weight_loss,
-                                      trainer.error_rate, trainer.logits_max_test],
-                                     feed_dict=feed_dict)
-        print(np.unique(lmt)) #unique argmax values of first sample in batch;
-        # should be blank for a while, then spit out target values
-        if (batch % 1) == 0:
-            print('Minibatch loss:', l, "weight loss:", wl)
-            print('Minibatch error rate:', er)
-        batch_errors[batch] = er
-        batch_losses[batch] = l
-    epoch_error_rate = batch_errors.sum()
-    epoch_error_lst.append(epoch_error_rate / BATCH_COUNT)
-    epoch_loss_lst.append(batch_losses.sum() / BATCH_COUNT)
-    print('Untrained error rate:', epoch_error_rate)
+        input_batches.append(trainDispenser.get_batch())
 
-    feed_dict, _ = create_dict(valDispenser.get_batch(), False)
-    vl, ver = session.run([trainer.loss, trainer.error_rate], feed_dict=feed_dict)
+    eval_loss, eval_error_rate = trainer.evaluate(input_batches, session)
+
+    epoch_error_lst.append(eval_error_rate)
+    epoch_loss_lst.append(eval_loss)
+    print('Untrained error rate:', eval_error_rate)
+
+    val_lst = [valDispenser.get_batch()]
+    vl, ver = trainer.evaluate(val_lst, session)
     print("untrained validation loss: ", vl, " validation error rate", ver)
     epoch_error_lst_val.append(ver)
 
     continue_training = True
     while continue_training:
         epoch = len(epoch_error_lst_val)
-        print("params:", LEARNING_RATE, MOMENTUM, INPUT_NOISE_STD) #OMEGA,
         print('Epoch', epoch, '...')
-        batch_losses = np.zeros(BATCH_COUNT)
-        batch_errors = np.zeros(BATCH_COUNT)
-        batch_rand_ixs = np.array(range(0, BATCH_COUNT))
+
+        input_batches = []
         for batch in range(0, BATCH_COUNT):
-            feed_dict, batchSeqLengths = create_dict(trainDispenser.get_batch(),
-                                                     True)
-            _, l, wl, er, lmt = session.run([trainer.optimizer, trainer.loss,
-                                             trainer.weight_loss,
-                                             trainer.error_rate,
-                                             trainer.logits_max_test],
-                                             feed_dict=feed_dict)
-            print(np.unique(lmt)) #print unique argmax values of first
-                                  #sample in batch; should be
-                                  #blank for a while, then spit
-                                  #out target values
-            if (batch % 1) == 0:
-                print('Minibatch loss:', l, "weight loss:", wl)
-                print('Minibatch error rate:', er)
-            batch_errors[batch] = er
-            batch_losses[batch] = l
-        epoch_error_rate = batch_errors.sum()
-        epoch_error_lst.append(epoch_error_rate / BATCH_COUNT)
-        epoch_loss_lst.append(batch_losses.sum() / BATCH_COUNT)
-        print('error rate:', epoch_error_rate / BATCH_COUNT)
+            input_batches.append(trainDispenser.get_batch())
 
-        feed_dict, _ = create_dict(valDispenser.get_batch(), False)
-        vl, ver = session.run([trainer.loss, trainer.error_rate],
-                               feed_dict=feed_dict)
-        print("validation loss: ", vl, " validation error rate", ver)
+        trn_loss, trn_error_rate = trainer.update(input_batches, session)
+
+        epoch_error_lst.append(trn_loss)
+        epoch_loss_lst.append(trn_error_rate)
+        print('error rate:', trn_error_rate)
+
+        val_lst = [valDispenser.get_batch()]
+        vl, ver = trainer.evaluate(val_lst, session)
+        print("validation loss: ", vl, "error rate", ver)
         epoch_error_lst_val.append(ver)
-
 
         # if the training error is lower than the validation error for
         # interval iterations stop..
@@ -238,10 +210,10 @@ with tf.Session(graph=trainer.model.tf_graph) as session:
             print("validation errors", epoch_error_lst_val)
 
     #run the network on the test data set.
-    feed_dict, _ = create_dict(testDispenser.get_batch(), False)
-    tl, ter = session.run([trainer.loss, trainer.error_rate],
-                           feed_dict=feed_dict)
-    print("test loss: ", tl, " test error rate", ter)
+    test_lst = [testDispenser.get_batch()]
+    tl, ter = trainer.evaluate(test_lst, session)
+    print("test loss: ", vl, "test error rate", ver)
+    epoch_error_lst_val.append(ver)
 
 filename = "saved/savedValsBLSTMAdam." + socket.gethostname() + ".pkl"
 pickle.dump([epoch_loss_lst, epoch_error_lst,
