@@ -90,6 +90,8 @@ class BlstmCtcModel(NnetGraph):
             return self.input_list
         # tf cond applys the first operation if noise_wanted is true and
         # does nothing it the variable is false.
+        #local_noise_wanted = tf.Print(self.noise_wanted, [self.noise_wanted],
+        #                              message='noise bool val: ')
         blstm_input_list = tf.cond(self.noise_wanted, add_noise,
                                    do_nothing)
         return blstm_input_list

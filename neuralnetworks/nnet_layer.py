@@ -30,14 +30,15 @@ class BlstmLayer(object):
         with tf.variable_scope(name + '_parameters'):
             self.weights = tf.get_variable('weights', [2*lstm_dim, output_dim],
                 initializer=tf.random_normal_initializer(stddev=weights_std))
-            self.biases = tf.get_variable('biases',  [output_dim],
+            self.biases = tf.get_variable('biases', [output_dim], 
                                        initializer=tf.constant_initializer(0))
 
     def __call__(self, inputs, sequence_length):
         #outputs, output_state_fw, output_state_bw
         outputs, _, _ = bidirectional_rnn(self.forward_lstm_block,
             self.backward_lstm_block, inputs, dtype=tf.float32)
-            #sequence_length=sequence_length) #TODO: investigate why this casues mem trouble.
+            #sequence_length=sequence_length)
+            #TODO: investigate why this casues mem trouble.
         #linear neuron computes the output for loop loops trought time.
         blstm_logits = [tf.matmul(T, self.weights) + self.biases for T in outputs]
         return blstm_logits
@@ -50,7 +51,7 @@ class FFLayer(object):
 
     @param input_dim input dimension of the layer.
     @param output_dim output dimension of the layer.
-    @param weights_std standart deviation of the weights initializer.
+    @param weights_std standard deviation of the weights initializer.
     @param name name of the layer.
     @param transfername name of the transfer function that is used.
     @param l2_norm boolean that determines of l2_normalisation is used after every layer.

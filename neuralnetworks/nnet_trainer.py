@@ -107,12 +107,13 @@ class Trainer(object):
 
     def evaluate(self, batched_data_list, session):
         '''
-        Evaluate model performance without applying gradients.
+        Evaluate model performance without applying gradients and no input
+        noise.
         '''
         batch_losses = np.zeros(len(batched_data_list))
         batch_errors = np.zeros(len(batched_data_list))
         for no, batch in enumerate(batched_data_list):
-            feed_dict, batch_seq_lengths = self.create_dict(batch, True)
+            feed_dict, batch_seq_lengths = self.create_dict(batch, False)
             l, wl, er = session.run([self.loss,
                                      self.weight_loss,
                                      self.error_rate],
@@ -143,6 +144,6 @@ class Trainer(object):
                          self.model.seq_lengths: batch_seq_lengths,
                          self.model.noise_wanted: noise_bool}
         return res_feed_dict, batch_seq_lengths
-        
+
     def initialize(self):
         tf.initialize_all_variables().run()

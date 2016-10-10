@@ -22,6 +22,8 @@ from prepare.batch_dispenser import UttTextDispenser
 from prepare.feature_reader import FeatureReader
 from neuralnetworks.nnet_graph import BlstmCtcModel
 from neuralnetworks.nnet_trainer import Trainer
+from neuralnetworks.nnet_acc_trainer import AccumulationTrainer
+
 
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
@@ -56,6 +58,7 @@ INPUT_NOISE_STD = 0.65
 #LEARNING_RATE = 0.0001       #too low?
 #MOMENTUM = 0.6              #play with this.
 MAX_N_EPOCHS = 900
+OVERFIT_TOL = 0.5
 
 
 ####Network Parameters
@@ -75,22 +78,23 @@ if timit:
     TIMIT_PATH = "/esat/spchtemp/scratch/moritz/dataSets/timit2/"
     TRAIN = "/train/40fbank"
     PHONEMES = True
+    MAX_BATCH_SIZE = 462
 
-    trainDispenser = generate_dispenser(TIMIT_PATH, TRAIN, TIMIT_LABELS,
-                                        462, PHONEMES)
+    train_dispenser = generate_dispenser(TIMIT_PATH, TRAIN, TIMIT_LABELS,
+                                        MAX_BATCH_SIZE, PHONEMES)
 
     VAL = "dev/40fbank"
-    valDispenser = generate_dispenser(TIMIT_PATH, VAL, TIMIT_LABELS,
+    val_dispenser = generate_dispenser(TIMIT_PATH, VAL, TIMIT_LABELS,
                                       400, PHONEMES)
 
     TEST = "test/40fbank"
-    testDispenser = generate_dispenser(TIMIT_PATH, TEST, TIMIT_LABELS,
+    test_dispenser = generate_dispenser(TIMIT_PATH, TEST, TIMIT_LABELS,
                                        192, PHONEMES)
 
 
-    BATCH_COUNT = trainDispenser.get_batch_count()
-    BATCH_COUNT_VAL = valDispenser.get_batch_count()
-    BATCH_COUNT_TEST = testDispenser.get_batch_count()
+    BATCH_COUNT = train_dispenser.get_batch_count()
+    BATCH_COUNT_VAL = val_dispenser.get_batch_count()
+    BATCH_COUNT_TEST = test_dispenser.get_batch_count()
 
     n_classes = TIMIT_LABELS + 1 #39 phonemes, plus the "blank" for CTC
 else:
@@ -99,22 +103,23 @@ else:
     AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
     TRAIN = "/train/40fbank"
     PHONEMES = False
+    MAX_BATCH_SIZE = 793
 
-    trainDispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
-                                        793, PHONEMES)
+    train_dispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
+                                        MAX_BATCH_SIZE, PHONEMES)
     TEST = "test/40fbank"
-    valDispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
+    val_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
                                       793, PHONEMES)
 
-    testDispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
+    test_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
                                        606, PHONEMES)
 
-    testFeatureReader = valDispenser.split_reader(606)
-    testDispenser.featureReader = testFeatureReader
+    test_feature_reader = val_dispenser.split_reader(606)
+    test_dispenser.featureReader = test_feature_reader
 
-    BATCH_COUNT = trainDispenser.get_batch_count()
-    BATCH_COUNT_VAL = valDispenser.get_batch_count()
-    BATCH_COUNT_TEST = testDispenser.get_batch_count()
+    BATCH_COUNT = train_dispenser.get_batch_count()
+    BATCH_COUNT_VAL = val_dispenser.get_batch_count()
+    BATCH_COUNT_TEST = test_dispenser.get_batch_count()
     print(BATCH_COUNT, BATCH_COUNT_VAL, BATCH_COUNT_TEST)
     n_classes = AURORA_LABELS + 1 #33 letters, plus the "blank" for CTC
 
@@ -122,9 +127,12 @@ else:
 #set up network and trainer.
 LEARNING_RATE_DECAY = 0
 
-blstmCtcGraph = BlstmCtcModel('ctc_blstm', n_features, n_hidden, max_time_steps,
-             n_classes, INPUT_NOISE_STD)
-trainer = Trainer(blstmCtcGraph, LEARNING_RATE, OMEGA)
+blstm_ctc_graph = BlstmCtcModel('ctc_blstm', n_features, n_hidden,
+                                 max_time_steps,
+                                 n_classes, INPUT_NOISE_STD)
+#trainer = Trainer(blstm_ctc_graph, LEARNING_RATE, OMEGA)
+trainer = AccumulationTrainer(blstm_ctc_graph, LEARNING_RATE, OMEGA,
+                              MAX_BATCH_SIZE)
 
 #debug_here()
 
@@ -137,12 +145,12 @@ def create_dict(batched_data_arg, noise_bool):
 
     batch_inputs, batch_trgt_sparse, batch_seq_lengths = batched_data_arg
     batch_trgt_ixs, batch_trgt_vals, batch_trgt_shape = batch_trgt_sparse
-    res_feed_dict = {blstmCtcGraph.input_x: batch_inputs,
+    res_feed_dict = {blstm_ctc_graph.input_x: batch_inputs,
                      trainer.target_ixs: batch_trgt_ixs,
                      trainer.target_vals: batch_trgt_vals,
                      trainer.target_shape: batch_trgt_shape,
-                     blstmCtcGraph.seq_lengths: batch_seq_lengths,
-                     blstmCtcGraph.noise_wanted: noise_bool}
+                     blstm_ctc_graph.seq_lengths: batch_seq_lengths,
+                     blstm_ctc_graph.noise_wanted: noise_bool}
     return res_feed_dict, batch_seq_lengths
 
 
@@ -159,15 +167,15 @@ with tf.Session(graph=trainer.model.tf_graph) as session:
     #check untrained performance.
     input_batches = []
     for batch in range(0, BATCH_COUNT):
-        input_batches.append(trainDispenser.get_batch())
+        input_batches.append(train_dispenser.get_batch())
 
     eval_loss, eval_error_rate = trainer.evaluate(input_batches, session)
 
-    epoch_error_lst.append(eval_error_rate)
     epoch_loss_lst.append(eval_loss)
+    epoch_error_lst.append(eval_error_rate)
     print('Untrained error rate:', eval_error_rate)
 
-    val_lst = [valDispenser.get_batch()]
+    val_lst = [val_dispenser.get_batch()]
     vl, ver = trainer.evaluate(val_lst, session)
     print("untrained validation loss: ", vl, " validation error rate", ver)
     epoch_error_lst_val.append(ver)
@@ -176,18 +184,16 @@ with tf.Session(graph=trainer.model.tf_graph) as session:
     while continue_training:
         epoch = len(epoch_error_lst_val)
         print('Epoch', epoch, '...')
-
         input_batches = []
         for batch in range(0, BATCH_COUNT):
-            input_batches.append(trainDispenser.get_batch())
-
+            input_batches.append(train_dispenser.get_batch())
         trn_loss, trn_error_rate = trainer.update(input_batches, session)
 
-        epoch_error_lst.append(trn_loss)
-        epoch_loss_lst.append(trn_error_rate)
+        epoch_loss_lst.append(trn_loss)
+        epoch_error_lst.append(trn_error_rate)
         print('error rate:', trn_error_rate)
 
-        val_lst = [valDispenser.get_batch()]
+        val_lst = [val_dispenser.get_batch()]
         vl, ver = trainer.evaluate(val_lst, session)
         print("validation loss: ", vl, "error rate", ver)
         epoch_error_lst_val.append(ver)
@@ -196,11 +202,12 @@ with tf.Session(graph=trainer.model.tf_graph) as session:
         # interval iterations stop..
         interval = 50
         if epoch > interval:
-            print("validation errors", epoch_error_lst_val[(epoch - interval):epoch])
+            print("validation errors",
+                epoch_error_lst_val[(epoch - interval):epoch])
 
             val_mean = np.mean(epoch_error_lst_val[(epoch - interval):epoch])
             train_mean = np.mean(epoch_error_lst[(epoch - interval):epoch])
-            test_val = val_mean - train_mean - 0.02
+            test_val = val_mean - train_mean - OVERFIT_TOL
             print('Overfit condition value:', test_val,
                   'remaining iterations: ', MAX_N_EPOCHS - epoch)
             if (test_val > 0) or (epoch > MAX_N_EPOCHS):
@@ -210,9 +217,9 @@ with tf.Session(graph=trainer.model.tf_graph) as session:
             print("validation errors", epoch_error_lst_val)
 
     #run the network on the test data set.
-    test_lst = [testDispenser.get_batch()]
+    test_lst = [test_dispenser.get_batch()]
     tl, ter = trainer.evaluate(test_lst, session)
-    print("test loss: ", vl, "test error rate", ver)
+    print("test loss: ", tl, "test error rate", ter)
     epoch_error_lst_val.append(ver)
 
 filename = "saved/savedValsBLSTMAdam." + socket.gethostname() + ".pkl"
