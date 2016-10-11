@@ -48,18 +48,20 @@ class BlstmCtcModel(NnetGraph):
             self.output_dim = output_dim
             self.input_noise_std = input_noise_std
 
-            #Variable wich determines if the graph is for training (it true add noise)
+            #Variable wich determines if the graph is for training
+            # (if true add noise)
             self.noise_wanted = tf.placeholder(tf.bool, shape=[],
                                                name='add_noise')
-            #### Graph input shape=(max_time_steps, batch_size, self.output_dim),
+            #### Graph input shape=(max_time_steps, batch_size,
+            # self.output_dim),
             #    but the first two change.
             self.input_x = tf.placeholder(tf.float32,
                                           shape=(self.max_time_steps,
-                                                 None, self.output_dim),
+                                                 None, self.input_dim),
                                           name='melFeatureInput')
             #Prep input data to fit requirements of rnn.bidirectional_rnn
             #Split to get a list of 'n_steps' tensors of shape (batch_size,
-            #                                                self.output_dim)
+            #                                                self.input_dim)
             self.input_list = tf.unpack(self.input_x, num=self.max_time_steps,
                                         axis=0)
 
@@ -79,6 +81,8 @@ class BlstmCtcModel(NnetGraph):
 
     @lazy_property
     def input(self):
+        '''This function adds input noise, when the noise_wanted placeholder
+           is set to True.'''
         #determine if noise is wanted in this tree.
         def add_noise():
             '''Operation used add noise during training'''
@@ -98,6 +102,9 @@ class BlstmCtcModel(NnetGraph):
 
     @lazy_property
     def logits(self):
+        ''' compute the output layer logits, which in this case is
+            done using a linear neuron to combine the results
+            computed by the forward and packward lstm passes.'''
         # logits3d (max_time_steps, batch_size, n_classes),
         logits = self.blstm_layer(self.input, self.seq_lengths)
         # pack puts the logit list into a big matrix.
@@ -107,9 +114,12 @@ class BlstmCtcModel(NnetGraph):
 
     @lazy_property
     def hypothesis(self):
+        '''
+        Decode to compute a the most probable output (hypothesis)
+        given the input data.
+        '''
         predictions = ctc.ctc_greedy_decoder(self.logits,
                                              self.seq_lengths)
-
         print("predictions", type(predictions))
         print("predictions[0]", type(predictions[0]))
         print("len(predictions[0])", len(predictions[0]))

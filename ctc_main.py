@@ -50,15 +50,15 @@ def generate_dispenser(data_path, set_kind, label_no, batch_size, phonemes):
 
 ###Learning Parameters
 #LEARNING_RATE = 0.0008
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.0008
 MOMENTUM = 0.9
-#OMEGA = 0.1 #weight regularization term.
-OMEGA = 0.000 #weight regularization term.
-INPUT_NOISE_STD = 0.65
+#OMEGA = 0.000 #weight regularization term.
+OMEGA = 0.001 #weight regularization term.
+INPUT_NOISE_STD = 0.6
 #LEARNING_RATE = 0.0001       #too low?
 #MOMENTUM = 0.6              #play with this.
 MAX_N_EPOCHS = 900
-OVERFIT_TOL = 0.5
+OVERFIT_TOL = 0.3
 
 
 ####Network Parameters
@@ -66,14 +66,14 @@ n_features = 40
 #n_hidden = 164
 #n_hidden = 180
 n_hidden = 156
-
+#n_hidden = 60
 
 
 ####Load timit data
 timit = True
 print('Loading data')
 if timit:
-    max_time_steps = 777
+    max_time_steps = 778
     TIMIT_LABELS = 39
     TIMIT_PATH = "/esat/spchtemp/scratch/moritz/dataSets/timit2/"
     TRAIN = "/train/40fbank"
@@ -98,7 +98,7 @@ if timit:
 
     n_classes = TIMIT_LABELS + 1 #39 phonemes, plus the "blank" for CTC
 else:
-    max_time_steps = 2037
+    max_time_steps = 2038
     AURORA_LABELS = 33
     AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
     TRAIN = "/train/40fbank"
@@ -130,29 +130,9 @@ LEARNING_RATE_DECAY = 0
 blstm_ctc_graph = BlstmCtcModel('ctc_blstm', n_features, n_hidden,
                                  max_time_steps,
                                  n_classes, INPUT_NOISE_STD)
-#trainer = Trainer(blstm_ctc_graph, LEARNING_RATE, OMEGA)
-trainer = AccumulationTrainer(blstm_ctc_graph, LEARNING_RATE, OMEGA,
-                              MAX_BATCH_SIZE)
-
-#debug_here()
-
-def create_dict(batched_data_arg, noise_bool):
-    '''Create an input dictonary to be fed into the tree.
-    @return:
-    The dicitonary containing the input numpy arrays,
-    the three sparse vector data components and the
-    sequence legths of each utterance.'''
-
-    batch_inputs, batch_trgt_sparse, batch_seq_lengths = batched_data_arg
-    batch_trgt_ixs, batch_trgt_vals, batch_trgt_shape = batch_trgt_sparse
-    res_feed_dict = {blstm_ctc_graph.input_x: batch_inputs,
-                     trainer.target_ixs: batch_trgt_ixs,
-                     trainer.target_vals: batch_trgt_vals,
-                     trainer.target_shape: batch_trgt_shape,
-                     blstm_ctc_graph.seq_lengths: batch_seq_lengths,
-                     blstm_ctc_graph.noise_wanted: noise_bool}
-    return res_feed_dict, batch_seq_lengths
-
+trainer = Trainer(blstm_ctc_graph, LEARNING_RATE, OMEGA)
+#trainer = AccumulationTrainer(blstm_ctc_graph, LEARNING_RATE, OMEGA,
+#                              MAX_BATCH_SIZE)
 
 ####Run session
 restarts = 0
