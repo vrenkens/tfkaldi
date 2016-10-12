@@ -10,8 +10,11 @@ from abc import ABCMeta, abstractproperty
 import tensorflow as tf
 from tensorflow.python.ops import ctc_ops as ctc
 
+from neuralnetworks.nnet_las_elements import Listener
+from neuralnetworks.nnet_las_elements import AttendAndSpell
 from neuralnetworks.nnet_layer import BlstmLayer
 from custompython.lazy_decorator import lazy_property
+from neuralnetworks.nnet_layer import BlstmSettings
 
 ##This an abstrace class defining a neural net
 #class NnetGraph(object, metaclass=ABCMeta):
@@ -74,7 +77,9 @@ class BlstmCtcModel(NnetGraph):
 
             # Make sure all properties are added to the model object upon
             # initialization.
+            # pylint does not know how ot deal with the lazy properties.
             # pylint: disable=W0104
+
             self.input
             self.logits
             self.hypothesis
@@ -126,3 +131,45 @@ class BlstmCtcModel(NnetGraph):
         print("predictions[0][0]", type(predictions[0][0]))
         hypothesis = tf.to_int32(predictions[0][0])
         return hypothesis
+
+
+class LasModel(NnetGraph):
+    ''' A neural end to end network based speech model.'''
+
+    def __init__(self, max_time_steps, mel_feature_no, batch_size):
+        self.dtype = tf.float32
+        self.max_time_steps = max_time_steps
+        self.mel_feature_no = mel_feature_no
+        self.batch_size = batch_size
+
+        #### Graph input shape=(max_time_steps, batch_size, mel_feature_no),
+            #    but the first two change.
+        self.input_x = tf.placeholder(self.dtype,
+                                      shape=(self.max_time_steps,
+                                             batch_size, self.mel_feature_no),
+                                      name='mel_feature_input')
+        #Prep input data to fit requirements of tf.rnn.bidirectional_rnn(')
+        #Split to get a list of 'n_steps' tensors of shape
+        # (batch_size, self.input_dim)
+        self.input_list = tf.unpack(self.input_x, num=self.max_time_steps,
+                                    axis=0)
+
+        self.seq_lengths = tf.placeholder(tf.int32, shape=batch_size,
+                                          name='seq_lengths')
+
+        ###LISTENTER
+        print('setting up the listener')
+        self.listen_output_dim = 64
+        blstm_settings = BlstmSettings(output_dim=64, lstm_dim=64,
+                                       weights_std=0.1, name='blstm')
+        plstm_settings = BlstmSettings(self.listen_output_dim,
+                                       64, 0.1, 'plstm')
+        self.listener = Listener(blstm_settings, plstm_settings, 3,
+                                 self.listen_output_dim)
+        self.hgh_lvl_fts = self.listener(self.input_list,
+                                         self.seq_lengths)
+
+        ###Attend and SPELL
+        labels = 33
+        print("Setting up the attend and spell part of the graph.")
+        self.attend_and_spell = AttendAndSpell(self)

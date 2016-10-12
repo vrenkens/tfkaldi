@@ -20,10 +20,7 @@ import numpy as np
 from prepare.batch_dispenser import PhonemeTextDispenser
 from prepare.batch_dispenser import UttTextDispenser
 from prepare.feature_reader import FeatureReader
-from neuralnetworks.nnet_las_elements import LasModel
-
-
-
+from neuralnetworks.nnet_graph import LasModel
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 

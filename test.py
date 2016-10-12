@@ -5,7 +5,7 @@ from prepare.feature_reader import FeatureReader
 from prepare.batch_dispenser import UttTextDispenser
 from prepare.batch_dispenser import PhonemeTextDispenser
 import matplotlib.pyplot as plt
-##for the moment i am assuming inputs are already computed stored at
+##for the moment i am assuming inputs are already computed and stored at
 # locations specified in the input scripts.
 
 

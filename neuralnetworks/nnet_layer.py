@@ -4,19 +4,21 @@
 
 import tensorflow as tf
 import numpy as np
+from copy import copy
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops.rnn import bidirectional_rnn
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 # fix the pylint state is tuple error
 # pylint: disable=E1123
-#disable the too few public methods complaint
+# disable the too few public methods complaint
 # pylint: disable=R0903
-#disable the print parenthesis warinig coming from python 2 pylint.
+# disable the print parenthesis warinig coming from python 2 pylint.
 # pylint: disable=C0325
 
 class BlstmSettings(object):
-    ''' An argument class grouping lstm related parameters '''
+    ''' An parameter class grouping parameters required to create
+        lstm layers.'''
     def __init__(self, output_dim, lstm_dim, weights_std, name):
         self.output_dim = output_dim
         self.lstm_dim = lstm_dim
@@ -90,6 +92,7 @@ class PyramidalBlstmLayer(BlstmLayer):
     pyramidal BLSTM: h[i,j] = BLSTM(h[i-1,j], [h[2i, j-1] h[2i+1, j-1]]);
     in other words the pyramidal BLSTM cocatenates the two vectors
     from the previous layer in time.
+    #TODO: Merge with with BlstmLayer.
     '''
     def __call__(self, inputs):
         with tf.name_scope(self.name + '_call') as scope:
@@ -120,38 +123,60 @@ class PyramidalBlstmLayer(BlstmLayer):
             return blstm_logits
 
 
+class FFSettings(object):
+    """An object containing all the necessary information to
+       create a FForward layer."""
+    # disabeling pylint waring, because all arguments are necessary and are
+    # all related to feedforward layers.
+    # pylint: disable=R0913
+    def __init__(self, input_dim, output_dim, weights_std, name,
+         transfername='linear', l2_norm=False, dropout=1):
+        '''
+        FFLayer settings, defines the variables.
+
+        @param input_dim input dimension of the layer.
+        @param output_dim output dimension of the layer.
+        @param weights_std standard deviation of the weights initializer.
+        @param name name of the layer.
+        @param transfername name of the transfer function that is used.
+        @param l2_norm boolean that determines of l2_normalisation
+               is used after every layer.
+        @param dropout the chance that a hidden unit is propagated to the
+               next layer.
+        '''
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.weights_std = weights_std
+        self.name = name
+        self.transfername = transfername
+        self.l2_norm = l2_norm
+        self.dropout = dropout
+
 
 ##This class defines a fully connected feed forward layer
 class FFLayer(object):
     '''
-    FFLayer constructor, defines the variables.
-
-    @param input_dim input dimension of the layer.
-    @param output_dim output dimension of the layer.
-    @param weights_std standard deviation of the weights initializer.
-    @param name name of the layer.
-    @param transfername name of the transfer function that is used.
-    @param l2_norm boolean that determines of l2_normalisation
-           is used after every layer.
-    @param dropout the chance that a hidden unit is propagated to the
-           next layer.
+    Feedforward layer class.
     '''
 
-    def __init__(self, input_dim, output_dim, weights_std, name,
-         transfername='linear', l2_norm=False, dropout=1):
-
-        #create the model parameters in this layer
-        with tf.variable_scope(name + '_parameters'):
-            self.weights = tf.get_variable('weights', [input_dim, output_dim],
-                initializer=tf.random_normal_initializer(stddev=weights_std))
-            self.biases = tf.get_variable('biases', [output_dim],
-                initializer=tf.constant_initializer(0))
+    def __init__(self, settings):
+        '''
+        Feedforward layer constructor takes a FFSettings object
+        and creates a layer using the parameters layed out therein.
+        '''
 
         #save the parameters
-        self.transfername = transfername
-        self.l2_norm = l2_norm
-        self.dropout = dropout
-        self.name = name
+        self.settings = settings
+
+        #create the model parameters in this layer
+        with tf.variable_scope(settings.name + '_parameters'):
+            w_init = tf.random_normal_initializer(stddev=settings.weights_std)
+            self.weights = tf.get_variable('weights', [settings.input_dim,
+                                                       settings.output_dim],
+                                                       initializer=w_init)
+            self.biases = tf.get_variable('biases', [settings.output_dim],
+                                        initializer=tf.constant_initializer(0))
+
 
     ## Do the forward computation.
     #
@@ -161,23 +186,21 @@ class FFLayer(object):
     #@return the output of the layer
     def __call__(self, inputs, apply_dropout=True):
 
-        with tf.name_scope(self.name +'_call'):
+        with tf.name_scope(self.settings.name +'_call'):
 
             #apply weights and biases
             outputs = transfer_function(tf.matmul(inputs, self.weights) +
-             self.biases, self.transfername)
+             self.biases, self.settings.transfername)
 
             #apply l2 normalisation
-            if self.l2_norm:
+            if self.settings.l2_norm:
                 outputs = transfer_function(outputs, 'l2_norm')
 
             #apply dropout
-            if self.dropout < 1 and apply_dropout:
-                outputs = tf.nn.dropout(outputs, self.dropout)
+            if self.settings.dropout < 1 and self.settings.apply_dropout:
+                outputs = tf.nn.dropout(outputs, self.settings.dropout)
 
         return outputs
-
-
 
 def transfer_function(inputs, name):
     '''
