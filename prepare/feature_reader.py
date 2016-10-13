@@ -7,7 +7,8 @@ import prepare.kaldi_interface as kaldiInterface
 
 
 def apply_cmvn(utt, stats):
-    '''apply mean and variance normalisation based on the previously computed statistics
+    '''apply mean and variance normalisation based on the previously computed
+    statistics
 
     @param utt the utterance feature numpy matrix
     @param stats a numpy array containing the mean and variance statistics.
@@ -26,7 +27,7 @@ def apply_cmvn(utt, stats):
 
 ## Class that can read features from a Kaldi archive and process them
 #  (cmvn and splicing)
-class FeatureReader:
+class FeatureReader(object):
     '''create a FeatureReader object
 
     @param scp_path: path to the features .scp file
@@ -81,12 +82,14 @@ class FeatureReader:
         ''' split off the features that have been read so far'''
         self.reader.split()
 
-    def split_utt(self,num_utt):
+    def split_utt(self, num_utt):
         '''Remove num_utt utterances from the feature reader and
             place them in a new reader object.'''
-        newFeatureReader = copy(self)
-        newFeatureReader.reader = self.reader.split_utt(num_utt)
-        return newFeatureReader
+        new_feature_reader = copy(self)
+        new_feature_reader.reader = self.reader.split_utt(num_utt)
+        return new_feature_reader
 
     def get_utt_no(self):
+        '''Return the total number of utterances, which could possible be
+        loaded from the associated data file. '''
         return len(self.reader.scp_data)

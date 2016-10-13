@@ -65,7 +65,7 @@ n_hidden = 156
 #n_hidden = 60
 
 max_time_steps = 2038
-AURORA_LABELS = 33
+AURORA_LABELS = 31
 AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
@@ -92,4 +92,5 @@ n_classes = AURORA_LABELS
 
 
 #create the las arcitecture
-las_model = LasModel(max_time_steps, MEL_FEATURE_NO, MAX_BATCH_SIZE)
+las_model = LasModel(max_time_steps, MEL_FEATURE_NO, MAX_BATCH_SIZE,
+                    AURORA_LABELS)

@@ -123,7 +123,7 @@ class PyramidalBlstmLayer(BlstmLayer):
             return blstm_logits
 
 
-class FFSettings(object):
+class FFLayerSettings(object):
     """An object containing all the necessary information to
        create a FForward layer."""
     # disabeling pylint waring, because all arguments are necessary and are

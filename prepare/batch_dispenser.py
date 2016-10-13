@@ -248,12 +248,10 @@ class UttTextDispenser(BatchDispenser):
         #replaced with (?)
         allowed_chrs = []
         allowed_chrs.append(' ')
-        allowed_chrs.append('(')
-        allowed_chrs.append(')')
-        allowed_chrs.append(',')
-        allowed_chrs.append('.')
         allowed_chrs.append('<')
         allowed_chrs.append('>')
+        allowed_chrs.append(',')
+        allowed_chrs.append('.')
         allowed_chrs.append('?')
         for counti in range(ord('a'), ord('z')):
             allowed_chrs.append(chr(counti))
@@ -266,17 +264,27 @@ class UttTextDispenser(BatchDispenser):
 
         super().__init__(featureReader, size, text_path,
                          num_labels, max_time)
+        self.TARGET_LABEL_NO = len(self.allowed_chrs)
 
     def encode(self, char_lst):
         '''
         Encode a character using the las encoding specified in self.code
-        dict
+        dict.
         '''
         encoded = []
         for char in char_lst:
             encoded.append(self.code_dict[char])
         return np.array(encoded, dtype=np.uint8)
 
+    def decode(self, char_lst):
+        '''
+        Turn encoded text data back into characters.
+        '''
+        decoded = []
+        reverse_dict = {code: char for char, code in self.code_dict.items()}
+        for char in char_lst:
+            decoded.append(reverse_dict[int(char)])
+        return decoded
 
     def normalize_targets(self, target_list):
         '''
@@ -293,22 +301,19 @@ class UttTextDispenser(BatchDispenser):
             elif word == '.PERIOD':
                 tmp_lst.append('.')
             else:
-                tmp_lst.append(' ')
                 tmp_lst.append(word)
-        tmp_lst.append('>')
+                tmp_lst.append(' ')
+        tmp_lst[-1] = ('>')
 
         #check the string for unknowns:
         norm_lst = []
         for word in tmp_lst:
-            if word == '(sos)' or word == '(eos)':
-                norm_lst.append(word)
-            else:
-                for any_chr in word:
-                    lower_c = any_chr.lower()
-                    if lower_c not in self.allowed_chrs:
-                        norm_lst.append('?')
-                    else:
-                        norm_lst.append(lower_c)
+            for any_chr in word:
+                lower_c = any_chr.lower()
+                if lower_c not in self.allowed_chrs:
+                    norm_lst.append('?')
+                else:
+                    norm_lst.append(lower_c)
         return norm_lst
 
 class PhonemeTextDispenser(BatchDispenser):
@@ -337,7 +342,7 @@ class PhonemeTextDispenser(BatchDispenser):
         for no, phoneme in enumerate(phones):
             phone_map.update({phoneme: no})
         self.phone_map = phone_map
-        
+
         #check if the phoneme number in the data matches with what the user
         #thinks it is.
         assert(num_labels == len(self.phone_map))
@@ -356,5 +361,5 @@ class PhonemeTextDispenser(BatchDispenser):
         for phone in phone_lst:
             targets.append(self.phone_map[phone])
         return np.array(targets, dtype=np.uint8)
-        
-    
+
+

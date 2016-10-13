@@ -51,6 +51,8 @@ class BlstmCtcModel(NnetGraph):
             self.output_dim = output_dim
             self.input_noise_std = input_noise_std
 
+            #TODO: move the computations into a __call()__ !!!
+
             #Variable wich determines if the graph is for training
             # (if true add noise)
             self.noise_wanted = tf.placeholder(tf.bool, shape=[],
@@ -136,11 +138,13 @@ class BlstmCtcModel(NnetGraph):
 class LasModel(NnetGraph):
     ''' A neural end to end network based speech model.'''
 
-    def __init__(self, max_time_steps, mel_feature_no, batch_size):
+    def __init__(self, max_time_steps, mel_feature_no, batch_size,
+                 target_label_no):
         self.dtype = tf.float32
         self.max_time_steps = max_time_steps
         self.mel_feature_no = mel_feature_no
         self.batch_size = batch_size
+        self.target_label_no = target_label_no
 
         #### Graph input shape=(max_time_steps, batch_size, mel_feature_no),
             #    but the first two change.
@@ -166,10 +170,10 @@ class LasModel(NnetGraph):
                                        64, 0.1, 'plstm')
         self.listener = Listener(blstm_settings, plstm_settings, 3,
                                  self.listen_output_dim)
+        #TODO: move to __call__
         self.hgh_lvl_fts = self.listener(self.input_list,
                                          self.seq_lengths)
 
         ###Attend and SPELL
-        labels = 33
         print("Setting up the attend and spell part of the graph.")
         self.attend_and_spell = AttendAndSpell(self)
