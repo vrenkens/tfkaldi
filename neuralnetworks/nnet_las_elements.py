@@ -5,8 +5,8 @@ from tensorflow.python.ops import rnn_cell
 from neuralnetworks.nnet_layer import BlstmSettings
 from neuralnetworks.nnet_layer import BlstmLayer
 from neuralnetworks.nnet_layer import PyramidalBlstmLayer
-from neuralnetworks.nnet_layer import FFLayerSettings
 from neuralnetworks.nnet_layer import FFLayer
+from neuralnetworks.nnet_activations import TfWrapper
 from custompython.lazy_decorator import lazy_property
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
@@ -16,13 +16,13 @@ from IPython.core.debugger import Tracer; debug_here = Tracer()
 # pylint: disable=C0325
 
 class Listener(object):
-    '''
+    """
     A set of pyramidal blstms, which compute high level audio features.
-    '''
+    """
     def __init__(self, blstm_settings, plstm_settings, plstm_layer_no,
                  output_dim):
-        ''' initialize the listener.
-        '''
+        """ initialize the listener.
+        """
         self.output_dim = output_dim
         #the Listerner foundation is a classical bidirectional Long Short
         #term mermory layer.
@@ -37,7 +37,7 @@ class Listener(object):
             self.plstms.append(PyramidalBlstmLayer(plstm_settings))
 
     def __call__(self, input_features, sequence_lengths):
-        ''' Compute the output of the listener function. '''
+        """ Compute the output of the listener function. """
         #compute the base layer blstm output.
         hidden_values = self.blstm_layer(input_features, sequence_lengths)
         #move on to the plstm ouputs.
@@ -47,7 +47,7 @@ class Listener(object):
 
 
 class AttendAndSpell(object):
-    ''' Class implementing alignment establishment and transcription
+    """ Class implementing alignment establishment and transcription
         or the attend and spell part of the LAS-model.
 
     Internal Variables:
@@ -56,7 +56,7 @@ class AttendAndSpell(object):
         context_vectors: (c_i) in the paper, found using the
                         attention_context function.
        character_probs: (y) output probability distribution.
-    '''
+    """
     def __init__(self, las_model):
         self.las_model = las_model
         with tf.variable_scope("attention"):
@@ -105,59 +105,43 @@ class AttendAndSpell(object):
 
             #--------------------Create network functions---------------------#
             # Feedforward layer custom parameters.
-            transfername = 'relu'
-            dropout = None
-            l2_norm = False
+            activation = None
+            activation = TfWrapper(activation, tf.nn.relu)
 
-            state_net_settings = FFNetSettings(self.dec_state_size,
+
+            state_net_dimension = FFNetDimension(self.dec_state_size,
                                                 self.feedforward_hidden_units,
                                                 self.feedforward_hidden_units,
                                                 self.feedforward_hidden_layers)
-            # please note that none values will be assigned later
-            state_layer_settings = FFLayerSettings(input_dim=None,
-                                              output_dim=None,
-                                              weights_std=None,
-                                              name='state_net',
-                                              transfername=transfername,
-                                              l2_norm=l2_norm,
-                                              dropout=dropout)
-            self.state_net = FeedForwardNetwork(state_net_settings,
-                                              state_layer_settings)
+
+            self.state_net = FeedForwardNetwork(state_net_dimension,
+                                                activation)
 
             # copy the state net any layer settings
             # => all properties, which are not explicitly changed
             # stay the same.
-            featr_net_settings = copy(state_net_settings)
-            featr_net_settings.input_dim = self.las_model.listen_output_dim
-            featr_layer_settings = copy(state_layer_settings)
-            featr_layer_settings.name = 'feature_net'
-            self.featr_net = FeedForwardNetwork(featr_net_settings,
-                                              featr_layer_settings)
+            featr_net_dimension = copy(state_net_dimension)
+            featr_net_dimension.input_dim = self.las_model.listen_output_dim
+            self.featr_net = FeedForwardNetwork(featr_net_dimension,
+                                                activation)
 
             self.decoder_rnn = RNN(self.dec_state_size, name='decoder_rnn')
 
-            char_net_settings = FFNetSettings(
+            char_net_dimension = FFNetDimension(
                             input_dim=self.dec_state_size
                                       +self.las_model.listen_output_dim,
                             output_dim=self.las_model.target_label_no,
                             num_hidden_units=self.feedforward_hidden_units,
                             num_hidden_layers=self.feedforward_hidden_layers)
 
-            char_layer_settings = FFLayerSettings(input_dim=None,
-                                  output_dim=None,
-                                  weights_std=None,
-                                  name='char_net',
-                                  transfername=transfername,
-                                  l2_norm=l2_norm)
-
-            self.char_net = FeedForwardNetwork(char_net_settings,
-                                              char_layer_settings)
+            self.char_net = FeedForwardNetwork(char_net_dimension,
+                                               activation)
 
     def __call__(self, high_lvl_features):
-        '''
+        """
         Evaluate the attend and spell function in order to compute the
         desired character distribution.
-        '''
+        """
 
         with tf.variable_scope("attention_computation"):
             scalar_energy_lst = []
@@ -173,7 +157,7 @@ class AttendAndSpell(object):
                 debug_here()
                 #TODO: fix input vector batch size collision problem
                 # 137, 793...
-                #TODO: Remove
+                #TODO: Remove.
 
                 #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
                 rnn_input = tf.concat(0, [decoder_state,
@@ -209,10 +193,10 @@ class AttendAndSpell(object):
 
 
 class RNN(object):
-    '''
+    """
     Set up the RNN network which computes the decoder state.
     This function takes
-    '''
+    """
     def __init__(self, lstm_dim, name):
         self.layer_number = 2
         #create the two required LSTM blocks.
@@ -223,17 +207,16 @@ class RNN(object):
                                                    use_peepholes=True,
                                                    state_is_tuple=True))
 
-
     def get_zero_state_lst(self, batch_size, dtype):
-        ''' Get a list filled with zero states which can be used
-            to start up the unrolled LSTM computations.'''
+        """ Get a list filled with zero states which can be used
+            to start up the unrolled LSTM computations."""
         zero_state_list = []
         for block in self.blocks:
             zero_state_list.append(block.zero_state(batch_size, dtype))
         return zero_state_list
 
     def __call__(self, single_input, state_list):
-        '''
+        """
         Computes the RNN outputs for a single input. This CALL MUST BE
         UNROLLED MANUALLY.
         @param single_input: a single input vector containing
@@ -241,7 +224,7 @@ class RNN(object):
                              from the previous time step.
         @param state_list: a list containing the cell state
                            for each lstm in the block list.
-        '''
+        """
 
         assert(len(state_list) == len(self.blocks))
         inoutput = single_input
@@ -252,8 +235,8 @@ class RNN(object):
         return inoutput, state_list
 
 
-class FFNetSettings(object):
-    """docstring for FFNetSettings"""
+class FFNetDimension(object):
+    """ Class containing the information to create Feedforward nets. """
     def __init__(self, input_dim, output_dim, num_hidden_units,
                  num_hidden_layers):
         self.input_dim = input_dim
@@ -261,42 +244,29 @@ class FFNetSettings(object):
         self.num_hidden_units = num_hidden_units
         self.num_hidden_layers = num_hidden_layers
 
-
 class FeedForwardNetwork(object):
-    ''' A class defining the feedforward MLP networks used to compute the
+    """ A class defining the feedforward MLP networks used to compute the
         scalar energy values required for the attention mechanism.
-    '''
-    def __init__(self, attention_net_settings, fflayer_settings):
-        #create shorter namespaces
-        ats = attention_net_settings
-        ffs = fflayer_settings
+    """
+    def __init__(self, dimension, activation):
         #store the settings
-        self.attention_net_settings = ats
-        self.fflayer_settings = ffs
+        self.dimension = dimension
+        self.activation = activation
 
         #create the layers
-        self.layers = [None]*(ats.num_hidden_layers+1)
+        self.layers = [None]*(dimension.num_hidden_layers+1)
         #input layer
-        ffs.input_dim = ats.input_dim
-        ffs.name = ffs.name + '_layer0'
-        ffs.output_dim = ats.num_hidden_layers
-        ffs.weights_std = 1/np.sqrt(ats.input_dim)
-        self.layers[0] = FFLayer(ffs)
+        self.layers[0] = FFLayer(dimension.num_hidden_units, activation)
         #hidden layers
         for k in range(1, len(self.layers)-1):
-            ffs.input_dim = ats.num_hidden_units
-            ffs.weights_std = 1/np.sqrt(ats.num_hidden_units)
-            ffs.name = ffs.name + '_layer' + str(k)
-            self.layers[k] = FFLayer(ffs)
+            self.layers[k] = FFLayer(dimension.num_hidden_units, activation)
         #output layer
-        ffs.output_dim = ats.output_dim
-        ffs.name = ffs.name + '_layer' + str(len(self.layers)-1)
-        self.layers[-1] = FFLayer(ffs)
+        self.layers[-1] = FFLayer(dimension.output_dim, activation)
 
     def __call__(self, states_or_features):
         hidden = states_or_features
         for layer in self.layers:
-            hidden = layer(hidden, apply_dropout=False)
+            hidden = layer(hidden)
         return hidden
 
 

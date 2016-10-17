@@ -25,8 +25,8 @@ from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 
 def generate_dispenser(data_path, set_kind, label_no, batch_size, phonemes):
-    ''' Instatiate a batch dispenser object using the data
-        at the spcified path locations'''
+    """ Instatiate a batch dispenser object using the data
+        at the spcified path locations"""
     feature_path = data_path + set_kind + "/" + "feats.scp"
     cmvn_path = data_path + set_kind + "/" + "cmvn.scp"
     utt2spk_path = data_path + set_kind + "/" + "utt2spk"
