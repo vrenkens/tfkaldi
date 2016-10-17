@@ -5,6 +5,9 @@
 # fix some pylint stuff
 # fix the pylint import problem.
 # pylint: disable=E0401
+# remove the python two print statement warning
+# pylint: disable=C0325
+
 
 from abc import ABCMeta, abstractproperty
 import tensorflow as tf
@@ -15,6 +18,8 @@ from neuralnetworks.nnet_las_elements import AttendAndSpell
 from neuralnetworks.nnet_layer import BlstmLayer
 from custompython.lazy_decorator import lazy_property
 from neuralnetworks.nnet_layer import BlstmSettings
+from IPython.core.debugger import Tracer; debug_here = Tracer()
+
 
 ##This an abstrace class defining a neural net
 #class NnetGraph(object, metaclass=ABCMeta):
@@ -25,7 +30,8 @@ class NnetGraph(object):
     #
     #@param name name of the neural network
     #@param args arguments that will be used as properties of the neural net
-    #@param kwargs named arguments that will be used as properties of the neural net
+    #@param kwargs named arguments that will be used as properties of the
+    # neural net
     def __init__(self, name, input_dim, num_hidden_units, max_time_steps):
 
         self.name = name
@@ -162,7 +168,7 @@ class LasModel(NnetGraph):
                                           name='seq_lengths')
 
         ###LISTENTER
-        print('setting up the listener')
+        print('creating listen functions...')
         self.listen_output_dim = 64
         blstm_settings = BlstmSettings(output_dim=64, lstm_dim=64,
                                        weights_std=0.1, name='blstm')
@@ -170,10 +176,15 @@ class LasModel(NnetGraph):
                                        64, 0.1, 'plstm')
         self.listener = Listener(blstm_settings, plstm_settings, 3,
                                  self.listen_output_dim)
-        #TODO: move to __call__
-        self.hgh_lvl_fts = self.listener(self.input_list,
-                                         self.seq_lengths)
 
         ###Attend and SPELL
-        print("Setting up the attend and spell part of the graph.")
+        print('creating attend and spell functions...')
         self.attend_and_spell = AttendAndSpell(self)
+
+    def __call__(self):
+        print('adding listen computations to the graph...')
+        high_level_features = self.listener(self.input_list,
+                                    self.seq_lengths)
+        print('adding attend computations to the graph')
+        char_dist = self.attend_and_spell(high_level_features)
+

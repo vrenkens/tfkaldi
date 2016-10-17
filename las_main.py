@@ -94,3 +94,4 @@ n_classes = AURORA_LABELS
 #create the las arcitecture
 las_model = LasModel(max_time_steps, MEL_FEATURE_NO, MAX_BATCH_SIZE,
                     AURORA_LABELS)
+las_model()

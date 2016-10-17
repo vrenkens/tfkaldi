@@ -8,6 +8,7 @@ from neuralnetworks.nnet_layer import PyramidalBlstmLayer
 from neuralnetworks.nnet_layer import FFLayerSettings
 from neuralnetworks.nnet_layer import FFLayer
 from custompython.lazy_decorator import lazy_property
+from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 #disable the too few public methods complaint
 # pylint: disable=R0903
@@ -157,6 +158,7 @@ class AttendAndSpell(object):
         Evaluate the attend and spell function in order to compute the
         desired character distribution.
         '''
+
         with tf.variable_scope("attention_computation"):
             scalar_energy_lst = []
             state_list = self.decoder_rnn.get_zero_state_lst(
@@ -168,6 +170,11 @@ class AttendAndSpell(object):
             context_vector = self.context_vector
 
             for time, feat_vec in enumerate(high_lvl_features):
+                debug_here()
+                #TODO: fix input vector batch size collision problem
+                # 137, 793...
+                #TODO: Remove
+
                 #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
                 rnn_input = tf.concat(0, [decoder_state,
                                        char_dist_vec,
