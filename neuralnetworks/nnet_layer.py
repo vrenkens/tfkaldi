@@ -161,7 +161,8 @@ class FFLayer(object):
         @return the output of the layer and the training output of the layer
         '''
         if self.initializer == None:
-            self.initializer = 1/int(inputs.get_shape()[1])**0.5
+            self.initializer = tf.random_normal_initializer(
+                                        stddev=1/int(inputs.get_shape()[1])**0.5)
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             with tf.variable_scope('parameters', reuse=reuse):

@@ -69,17 +69,17 @@ AURORA_LABELS = 31
 AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
-MAX_BATCH_SIZE = 793
+MAX_BATCH_SIZE = 128
 MEL_FEATURE_NO = 40
 
 train_dispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
                                     MAX_BATCH_SIZE, PHONEMES)
 TEST = "test/40fbank"
 val_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                  793, PHONEMES)
+                                  128, PHONEMES)
 
 test_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                   606, PHONEMES)
+                                   128, PHONEMES)
 
 test_feature_reader = val_dispenser.split_reader(606)
 test_dispenser.featureReader = test_feature_reader

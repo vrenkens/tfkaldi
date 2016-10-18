@@ -72,7 +72,8 @@ class AttendAndSpell(object):
             zero_initializer = tf.constant_initializer(value=0)
             self.decoder_state = tf.get_variable(
                                     name='current_decoder_state',
-                                    shape=[self.dec_state_size, 1],
+                                    shape=[self.las_model.batch_size,
+                                           self.dec_state_size],
                                     initializer=zero_initializer,
                                     trainable=False)
             # the charater distirbution must initially be the sos token.
@@ -85,15 +86,16 @@ class AttendAndSpell(object):
             sos_initializer = tf.constant_initializer(sos)
             self.char_dist_vec = tf.get_variable(
                                     name='char_dist_vec',
-                                    shape=[self.las_model.target_label_no, 1],
+                                    shape=[self.las_model.batch_size,
+                                           self.las_model.target_label_no],
                                     initializer=sos_initializer,
                                     trainable=False)
             # the dimension of the context vector is determined by the listener
             # output dimension.
             self.context_vector = tf.get_variable(
                                     name='context_vector',
-                                    shape=[self.las_model.listen_output_dim,
-                                           1],
+                                    shape=[self.las_model.batch_size,
+                                           self.las_model.listen_output_dim],
                                         initializer=zero_initializer,
                                         trainable=False)
 
@@ -115,7 +117,7 @@ class AttendAndSpell(object):
                                                 self.feedforward_hidden_layers)
 
             self.state_net = FeedForwardNetwork(state_net_dimension,
-                                                activation)
+                                                activation, name='state_net')
 
             # copy the state net any layer settings
             # => all properties, which are not explicitly changed
@@ -123,7 +125,7 @@ class AttendAndSpell(object):
             featr_net_dimension = copy(state_net_dimension)
             featr_net_dimension.input_dim = self.las_model.listen_output_dim
             self.featr_net = FeedForwardNetwork(featr_net_dimension,
-                                                activation)
+                                                activation, name='featr_net')
 
             self.decoder_rnn = RNN(self.dec_state_size, name='decoder_rnn')
 
@@ -135,105 +137,131 @@ class AttendAndSpell(object):
                             num_hidden_layers=self.feedforward_hidden_layers)
 
             self.char_net = FeedForwardNetwork(char_net_dimension,
-                                               activation)
+                                               activation,
+                                               name='char_net')
 
     def __call__(self, high_lvl_features):
         """
         Evaluate the attend and spell function in order to compute the
         desired character distribution.
         """
-
         with tf.variable_scope("attention_computation"):
             scalar_energy_lst = []
-            state_list = self.decoder_rnn.get_zero_state_lst(
+            rnn_states = self.decoder_rnn.get_zero_states(
                                                     self.las_model.batch_size,
                                                     self.las_model.dtype)
-
             decoder_state = self.decoder_state
             char_dist_vec = self.char_dist_vec
             context_vector = self.context_vector
 
             for time, feat_vec in enumerate(high_lvl_features):
-                debug_here()
-                #TODO: fix input vector batch size collision problem
-                # 137, 793...
-                #TODO: Remove.
-
+                print_interval = 127
+                interval_print(print_interval, time, '--Time step---', time)
+                interval_print(print_interval, time,
+                        'Feature vector size:', tf.Tensor.get_shape(feat_vec))
                 #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
-                rnn_input = tf.concat(0, [decoder_state,
-                                       char_dist_vec,
-                                       context_vector])
-                decoder_state, state_list = self.decoder_rnn(rnn_input,
-                                                             state_list)
+                #Dimensions:   decoder_state_size , 42
+                #            + alphabet_size,       31
+                #            + listener_output_dim, 64
+                #                                   137
+                rnn_input = tf.concat(1, [decoder_state,
+                                          char_dist_vec,
+                                          context_vector])
+                interval_print(print_interval, time,
+                        'RNN input size:', tf.Tensor.get_shape(rnn_input))
+                decoder_state, rnn_states = self.decoder_rnn(rnn_input,
+                                                             rnn_states)
 
-                #compute the attention context.
+                ### compute the attention context. ###
                 # e_(i,u) = psi(s_i)^T * phi(h_u)
-                scalar_energy = tf.nnet.reduce_sum(
-                                            self.featr_net(feat_vec)
-                                           *self.state_net(decoder_state))
+                psi = self.featr_net(feat_vec)
+                phi = self.state_net(decoder_state)
+
+                interval_print(print_interval, time,
+                        'Feature net output shape:', tf.Tensor.get_shape(psi))
+                interval_print(print_interval, time,
+                        'State net output shape:', tf.Tensor.get_shape(phi))
+
+                scalar_energy = tf.reduce_sum(psi*phi, reduction_indices=1,
+                                              name='dot_sum')
+
+                interval_print(print_interval, time,
+                               'scalar_energy shape:',
+                               tf.Tensor.get_shape(scalar_energy))
+
                 scalar_energy_lst.append(scalar_energy)
                 # alpha = softmax(e_(i,u))
                 scalar_energy_tensor = tf.convert_to_tensor(scalar_energy_lst)
                 alpha = tf.nn.softmax(scalar_energy_tensor)
 
-                # find the context vector
+                ### find the context vector. ###
                 # c_i = sum(alpha*h_i)
                 #compute the current context_vector assuming that vectors
                 #ahead of the current time step do not matter.
+                interval_print(print_interval, time,
+                               "High lvl feat el. shape:",
+                                tf.Tensor.get_shape(high_lvl_features[0]))
+                interval_print(print_interval, time,
+                        "Alpha shape:", tf.Tensor.get_shape(alpha))
+
                 context_vector = 0*context_vector #set context_vector to zero.
                 for t in range(0, time):
+                    #reshaping from (batch_size,) to (batch_size,1) is
+                    #needed for broadcasting.
+                    current_alpha = tf.reshape(alpha[t, :],
+                                              [self.las_model.batch_size, 1])
                     context_vector = (context_vector
-                                    + alpha[t]*high_lvl_features[t])
+                                    + current_alpha*high_lvl_features[t])
 
                 #construct the char_net input
-                char_net_input = tf.concat(0, [decoder_state, context_vector])
+                char_net_input = tf.concat(1, [decoder_state, context_vector])
+                interval_print(print_interval, time,
+                        'char_net input shape:',
+                        tf.Tensor.get_shape(char_net_input))
                 char_dist_vec = self.char_net(char_net_input)
                 char_dist_vec = tf.nn.softmax(char_dist_vec)
+                interval_print(print_interval, time,
+                        'output_shape:', tf.Tensor.get_shape(char_dist_vec))
+
         return char_dist_vec
 
 
 class RNN(object):
     """
     Set up the RNN network which computes the decoder state.
-    This function takes
     """
     def __init__(self, lstm_dim, name):
+        self.name = name
         self.layer_number = 2
         #create the two required LSTM blocks.
         self.blocks = []
-        for i in range(0, self.layer_number):
-            with tf.variable_scope(name + 'block' + str(i)):
-                self.blocks.append(rnn_cell.LSTMCell(lstm_dim,
-                                                   use_peepholes=True,
-                                                   state_is_tuple=True))
+        for _ in range(0, self.layer_number):
+            self.blocks.append(rnn_cell.LSTMCell(lstm_dim,
+                                                 use_peepholes=True,
+                                                 state_is_tuple=True))
+        self.wrapped_cells = rnn_cell.MultiRNNCell(self.blocks,
+                                                   state_is_tuple=True)
+        self.reuse = None
 
-    def get_zero_state_lst(self, batch_size, dtype):
+    def get_zero_states(self, batch_size, dtype):
         """ Get a list filled with zero states which can be used
             to start up the unrolled LSTM computations."""
-        zero_state_list = []
-        for block in self.blocks:
-            zero_state_list.append(block.zero_state(batch_size, dtype))
-        return zero_state_list
+        return self.wrapped_cells.zero_state(batch_size, dtype)
 
-    def __call__(self, single_input, state_list):
+    def __call__(self, single_input, state):
         """
         Computes the RNN outputs for a single input. This CALL MUST BE
         UNROLLED MANUALLY.
-        @param single_input: a single input vector containing
-                             the output distribution and context
-                             from the previous time step.
-        @param state_list: a list containing the cell state
-                           for each lstm in the block list.
         """
+        assert(len(state) == len(self.blocks))
 
-        assert(len(state_list) == len(self.blocks))
-        inoutput = single_input
-        new_states_list = []
-        for idx, block in enumerate(self.blocks):
-            inoutput, state = block(inoutput, state_list[idx])
-            new_states_list.append(state)
-        return inoutput, state_list
+        with tf.variable_scope(self.name + '_call', reuse=self.reuse):
+            output = self.wrapped_cells(single_input, state)
 
+        if self.reuse == None:
+            self.reuse = True
+
+        return output
 
 class FFNetDimension(object):
     """ Class containing the information to create Feedforward nets. """
@@ -248,13 +276,15 @@ class FeedForwardNetwork(object):
     """ A class defining the feedforward MLP networks used to compute the
         scalar energy values required for the attention mechanism.
     """
-    def __init__(self, dimension, activation):
+    def __init__(self, dimension, activation, name):
         #store the settings
         self.dimension = dimension
         self.activation = activation
+        self.name = name
+        self.reuse = None
 
         #create the layers
-        self.layers = [None]*(dimension.num_hidden_layers+1)
+        self.layers = [None]*(dimension.num_hidden_layers + 1)
         #input layer
         self.layers[0] = FFLayer(dimension.num_hidden_units, activation)
         #hidden layers
@@ -265,13 +295,18 @@ class FeedForwardNetwork(object):
 
     def __call__(self, states_or_features):
         hidden = states_or_features
-        for layer in self.layers:
-            hidden = layer(hidden)
+        for i, layer in enumerate(self.layers):
+            hidden = layer(hidden, scope=(self.name + '/' + str(i)),
+                           reuse=(self.reuse))
+        #set reuse to true after the variables have been created in the first
+        #call.
+        if self.reuse == None:
+            self.reuse = True
         return hidden
 
-
-
-
-
+def interval_print(interval, time, string, value):
+    '''Print vector shapes only every interval time steps.'''
+    if time%interval == 0:
+        print(string, value)
 
 

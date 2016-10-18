@@ -20,7 +20,6 @@ class Activation(object):
            which is guarenteed if they use the meta-constructor.'''
         self.activation = activation
 
-
     def __call__(self, inputs, is_training=False, reuse=False):
         """apply the activation function
         @param inputs the inputs to the activation function

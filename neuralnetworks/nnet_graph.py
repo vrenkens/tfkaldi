@@ -180,6 +180,6 @@ class LasModel(NnetGraph):
         print('adding listen computations to the graph...')
         high_level_features = self.listener(self.input_list,
                                     self.seq_lengths)
-        print('adding attend computations to the graph')
+        print('adding attend computations to the graph...')
         char_dist = self.attend_and_spell(high_level_features)
 
