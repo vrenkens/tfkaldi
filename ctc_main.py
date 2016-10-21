@@ -20,9 +20,10 @@ import numpy as np
 from prepare.batch_dispenser import PhonemeTextDispenser
 from prepare.batch_dispenser import UttTextDispenser
 from prepare.feature_reader import FeatureReader
-from neuralnetworks.nnet_graph import BlstmCtcModel
-from neuralnetworks.nnet_trainer import Trainer
-from neuralnetworks.nnet_acc_trainer import AccumulationTrainer
+from neuralnetworks.nnet_blstm_ctc_model import BlstmCtcModel
+from neuralnetworks.nnet_ctc_trainer import Trainer
+
+
 
 
 from IPython.core.debugger import Tracer; debug_here = Tracer()

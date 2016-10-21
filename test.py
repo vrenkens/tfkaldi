@@ -23,7 +23,7 @@ feature_reader_aurora = FeatureReader(train_feature_path, train_cmvn_path,
                                     utt2spk_path)
 
 MAX_TIME_AURORA = 2037
-AURORA_LABELS = 31
+AURORA_LABELS = 32
 BATCH_SIZE = 20
 
 aurora_dispenser = UttTextDispenser(feature_reader_aurora, BATCH_SIZE,
@@ -43,6 +43,10 @@ print(aurora_dispenser.decode(dense_target_matrix[0, :]))
 for i in range(1, 10):
     print(''.join(aurora_dispenser.decode(dense_target_matrix[i, :])))
 
+ix, val, shape = batched_data_aurora[1]
+dense_targets_aurora = BatchDispenser.sparse_to_dense(ix, val, shape)
+plt.imshow(dense_targets_aurora)
+plt.show()
 
 
 if 0:

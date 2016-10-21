@@ -10,17 +10,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-#to store the data and name it properly.
-import pickle
-import socket
 
 import matplotlib.pyplot as plt
-import tensorflow as tf
-import numpy as np
 from prepare.batch_dispenser import PhonemeTextDispenser
 from prepare.batch_dispenser import UttTextDispenser
 from prepare.feature_reader import FeatureReader
-from neuralnetworks.nnet_graph import LasModel
+from neuralnetworks.nnet_las_model import LasModel
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 
@@ -65,7 +60,7 @@ n_hidden = 156
 #n_hidden = 60
 
 max_time_steps = 2038
-AURORA_LABELS = 31
+AURORA_LABELS = 32
 AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
@@ -73,13 +68,13 @@ MAX_BATCH_SIZE = 128
 MEL_FEATURE_NO = 40
 
 train_dispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
-                                    MAX_BATCH_SIZE, PHONEMES)
+                                     MAX_BATCH_SIZE, PHONEMES)
 TEST = "test/40fbank"
 val_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                  128, PHONEMES)
+                                   128, PHONEMES)
 
 test_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                   128, PHONEMES)
+                                    128, PHONEMES)
 
 test_feature_reader = val_dispenser.split_reader(606)
 test_dispenser.featureReader = test_feature_reader
@@ -93,5 +88,5 @@ n_classes = AURORA_LABELS
 
 #create the las arcitecture
 las_model = LasModel(max_time_steps, MEL_FEATURE_NO, MAX_BATCH_SIZE,
-                    AURORA_LABELS)
-las_model()
+                     AURORA_LABELS)
+result = las_model()
