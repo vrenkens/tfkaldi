@@ -31,11 +31,11 @@ def generate_dispenser(data_path, set_kind, label_no, batch_size, phonemes):
     if phonemes is True:
         dispenser = PhonemeTextDispenser(featureReader, batch_size,
                                          text_path, label_no,
-                                         max_time_steps)
+                                         max_time_steps, one_hot_encoding=True)
     else:
         dispenser = UttTextDispenser(featureReader, batch_size,
                                      text_path, label_no,
-                                     max_time_steps)
+                                     max_time_steps, one_hot_encoding=True)
     return dispenser
 
 
@@ -85,8 +85,8 @@ BATCH_COUNT_TEST = test_dispenser.get_batch_count()
 print(BATCH_COUNT, BATCH_COUNT_VAL, BATCH_COUNT_TEST)
 n_classes = AURORA_LABELS
 
-
+test_batch = test_dispenser.get_batch()
 #create the las arcitecture
 las_model = LasModel(max_time_steps, MEL_FEATURE_NO, MAX_BATCH_SIZE,
                      AURORA_LABELS)
-result = las_model()
+logits = LasModel()

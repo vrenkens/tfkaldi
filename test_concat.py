@@ -16,6 +16,7 @@ char_vec_tf_old = tf.get_variable('test_old', [1, 5], dtype=tf.float32,
                                   initializer=vec_init)
 char_vec_tf = tf.get_variable('test', [1, 5], dtype=tf.float32,
                               initializer=vec_init)
+
 concat = tf.concat(0, [char_vec_tf_old, char_vec_tf])
 scaled_vec = tf.nn.softmax(char_vec_tf)
 prob_zero = tf.exp(char_vec_tf[:, 0]) / tf.reduce_sum(tf.exp(char_vec_tf))

@@ -6,6 +6,7 @@ import sys
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops.rnn_cell import RNNCell
 
 # we are currenly in neuralnetworks, add it to the path.
 sys.path.append("neuralnetworks")
@@ -14,8 +15,7 @@ from nnet_layer import PyramidalBlstmLayer
 from nnet_layer import FFLayer
 from nnet_activations import TfWrapper
 
-from IPython.core.debugger import Tracer
-debug_here = Tracer()
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 #disable the too few public methods complaint
 # pylint: disable=R0903
@@ -26,7 +26,7 @@ class Listener(object):
     """
     def __init__(self, blstm_settings, plstm_settings, plstm_layer_no,
                  output_dim):
-        """ initialize the listener.
+        """ Initialize the listener.
         """
         self.output_dim = output_dim
         #the Listerner foundation is a classical bidirectional Long Short
@@ -51,204 +51,146 @@ class Listener(object):
         return hidden_values
 
 
-class AttendAndSpell(object):
-    """ Class implementing alignment establishment and transcription
-        or the attend and spell part of the LAS-model.
+class AttendAndSpellCell(RNNCell):
+    """
+    Define an attend and Spell Cell. This cell takes the high level features
+    as input. During training the groundtrouth values are fed into the network
+    as well.
 
     Internal Variables:
-              features: (H)  the high level features the Listener computed.
-         decoder_state: (s_i)
-        context_vectors: (c_i) in the paper, found using the
+              features: (H) the high level features the Listener computed.
+         decoder_state: (s_i) ambiguous in the las paper split in two here.
+       context_vectors: (c_i) in the paper, found using the
                         attention_context function.
-       character_probs: (y) output probability distribution.
+          one_hot_char: (y) one hot encoded input and output char.
     """
-    def __init__(self, las_model):
+    def __init__(self, batch_size, decoder_state_size=42,
+                 feedforward_hidden_units=42, feedforward_hidden_layers=4):
+        self.feedforward_hidden_units = feedforward_hidden_units
+        self.feedforward_hidden_layers = feedforward_hidden_layers
+        #the decoder state size must be equal to the RNN size.
+        self.dec_state_size = decoder_state_size
         self.high_lvl_features = None
-        self.las_model = las_model
-        with tf.variable_scope("attention"):
-            self.feedforward_hidden_units = 42
-            self.feedforward_hidden_layers = 4
-            #the decoder state size must be equal to the RNN size.
-            self.dec_state_size = 42
 
-            #TODO: Do this better.
-            self.eos_treshold = tf.constant(0.8)
-            self.max_target_length = tf.constant(171)
+        #----------------------Create Variables-------------------------------#
+        # setting up the decider_state, character distribution
+        # and context vector variables.
+        zero_initializer = tf.constant_initializer(value=0)
+        self.decoder_state = tf.get_variable(
+            name='current_decoder_state',
+            shape=[batch_size, self.dec_state_size],
+            initializer=zero_initializer,
+            trainable=False)
+        # the charater distirbution must initially be the sos token.
+        # assuming encoding done as specified in the batch dispenser.
+        # 0: ' ', 1: '<', 2:'>', ...
+        # initialize to start of sentence token '<' as one hot encoding:
+        # 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        sos = np.zeros(self.las_model.target_label_no)
+        sos[1] = 1
+        sos_initializer = tf.constant_initializer(sos)
+        self.one_hot_char = tf.get_variable(
+            name='one_hot_char',
+            shape=[batch_size,
+                   self.las_model.target_label_no],
+            initializer=sos_initializer,
+            trainable=False)
+        # the dimension of the context vector is determined by the listener
+        # output dimension.
+        self.context_vector = tf.get_variable(
+            name='context_vector',
+            shape=[batch_size,
+                   self.las_model.listen_output_dim],
+            initializer=zero_initializer,
+            trainable=False)
 
-            #--------------------Create Variables-----------------------------#
-            # setting up the decider_state, character distribution
-            # and context vector variables.
-            zero_initializer = tf.constant_initializer(value=0)
-            self.decoder_state = tf.get_variable(
-                name='current_decoder_state',
-                shape=[self.las_model.batch_size, self.dec_state_size],
-                initializer=zero_initializer,
-                trainable=False)
-            # the charater distirbution must initially be the sos token.
-            # assuming encoding done as specified in the batch dispenser.
-            # 0: ' ', 1: '<', 2:'>', ...
-            # initialize to start of sentence token '<' or as one hot encoding:
-            # 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-            sos = np.zeros(self.las_model.target_label_no)
-            sos[1] = 1
-            sos_initializer = tf.constant_initializer(sos)
-            self.char_dist_vec = tf.get_variable(
-                name='char_dist_vec',
-                shape=[self.las_model.batch_size,
-                       self.las_model.target_label_no],
-                initializer=sos_initializer,
-                trainable=False)
-            # the dimension of the context vector is determined by the listener
-            # output dimension.
-            self.context_vector = tf.get_variable(
-                name='context_vector',
-                shape=[self.las_model.batch_size,
-                       self.las_model.listen_output_dim],
-                initializer=zero_initializer,
-                trainable=False)
+        self.scalar_energies = tf.get_variable(
+            name='scalar_energies',
+            shape=[self.las_model.listen_output_dim, 1],
+            initializer=zero_initializer,
+            trainable=False)
 
-            self.scalar_energies = tf.get_variable(
-                name='scalar_energies',
-                shape=[self.las_model.listen_output_dim, 1],
-                initializer=zero_initializer,
-                trainable=False)
+        self.char_dist_tensor = tf.get_variable(
+            name='char_dist_tensor',
+            shape=[1, batch_size,
+                   self.las_model.target_label_no],
+            initializer=sos_initializer,
+            trainable=False)
+        #--------------------Create network functions-------------------------#
+        # TODO: Move outside the cell
+        # Feedforward layer custom parameters. Vincent knows more about these.
+        activation = None
+        activation = TfWrapper(activation, tf.nn.relu)
 
-            self.char_dist_tensor = tf.get_variable(
-                name='char_dist_tensor',
-                shape=[1, self.las_model.batch_size,
-                       self.las_model.target_label_no],
-                initializer=sos_initializer,
-                trainable=False)
+        state_net_dimension = FFNetDimension(self.dec_state_size,
+                                             self.feedforward_hidden_units,
+                                             self.feedforward_hidden_units,
+                                             self.feedforward_hidden_layers
+                                            )
 
-            #--------------------Create network functions---------------------#
-            # Feedforward layer custom parameters.
-            activation = None
-            activation = TfWrapper(activation, tf.nn.relu)
+        self.state_net = FeedForwardNetwork(state_net_dimension,
+                                            activation, name='state_net')
+        # copy the state net any layer settings
+        # => all properties, which are not explicitly changed
+        # stay the same.
+        featr_net_dimension = copy(state_net_dimension)
+        featr_net_dimension.input_dim = self.las_model.listen_output_dim
+        self.featr_net = FeedForwardNetwork(featr_net_dimension,
+                                            activation, name='featr_net')
 
+        self.pre_context_rnn = RNN(self.dec_state_size,
+                                   name='pre_context_rnn')
+        self.post_context_rnn = RNN(self.dec_state_size,
+                                    name='post_context_rnn')
 
-            state_net_dimension = FFNetDimension(self.dec_state_size,
-                                                 self.feedforward_hidden_units,
-                                                 self.feedforward_hidden_units,
-                                                 self.feedforward_hidden_layers
-                                                )
+        char_net_dimension = FFNetDimension(
+            input_dim=self.dec_state_size
+            +         self.las_model.listen_output_dim,
+            output_dim=self.las_model.target_label_no,
+            num_hidden_units=self.feedforward_hidden_units,
+            num_hidden_layers=self.feedforward_hidden_layers)
 
-            self.state_net = FeedForwardNetwork(state_net_dimension,
-                                                activation, name='state_net')
-
-            # copy the state net any layer settings
-            # => all properties, which are not explicitly changed
-            # stay the same.
-            featr_net_dimension = copy(state_net_dimension)
-            featr_net_dimension.input_dim = self.las_model.listen_output_dim
-            self.featr_net = FeedForwardNetwork(featr_net_dimension,
-                                                activation, name='featr_net')
-
-            self.decoder_rnn = RNN(self.dec_state_size, name='decoder_rnn')
-
-            char_net_dimension = FFNetDimension(
-                input_dim=self.dec_state_size
-                +         self.las_model.listen_output_dim,
-                output_dim=self.las_model.target_label_no,
-                num_hidden_units=self.feedforward_hidden_units,
-                num_hidden_layers=self.feedforward_hidden_layers)
-
-            self.char_net = FeedForwardNetwork(char_net_dimension,
-                                               activation,
-                                               name='char_net')
+        self.char_net = FeedForwardNetwork(char_net_dimension,
+                                           activation,
+                                           name='char_net')
 
 
-    def __call__(self, high_lvl_features):
-        """
-        Evaluate the attend and spell function in order to compute the
-        desired character distribution.
-        """
+
+    def set_features(self, high_lvl_features):
+        ''' Set the features when available, storing the features in the
+            object makes the cell call simpler.'''
         self.high_lvl_features = high_lvl_features
-        with tf.variable_scope("attention_computation"):
-            rnn_states = self.decoder_rnn.get_zero_states(
-                self.las_model.batch_size,
-                self.las_model.dtype)
-            decoder_state = self.decoder_state
-            context_vector = self.context_vector
-            char_dist_vec = self.char_dist_vec
-            char_dist_tensor = self.char_dist_tensor
 
-            i = tf.get_variable('loop_counter', [], dtype=tf.int32
-                                , initializer=tf.constant_initializer(0))
-            loop_vars = (i, decoder_state, context_vector, char_dist_vec,
-                         char_dist_tensor, rnn_states)
+    def __call__(self, cell_input, state, scope=None):
+        """
+        Do the computations for a single unrolling of the attend and
+        spell network.
+        During training make sure training_char_input contains
+        valid groundtrouth values.
+        """
+        groundtruth_char = cell_input
+        pre_context_states, post_context_states, one_hot_char, \
+            context_vector = state
 
-            # set up the invariants. Always take the vecor shapes,
-            # instead of the first example, where the first dimension is set
-            # to to vary, because the while function body concatenates new
-            # values into the first dimension.
-            invariants = (i.get_shape(),
-                          decoder_state.get_shape(),
-                          context_vector.get_shape(),
-                          char_dist_vec.get_shape(),
-                          tf.TensorShape([None,
-                                          self.las_model.batch_size,
-                                          self.las_model.target_label_no]),
-                          rnn_states.get_shape())
+        if self.high_lvl_features is None:
+            raise AttributeError("Features must be set.")
 
-            loop_vars = tf.while_loop(self.cond, self.body,
-                                      loop_vars=[loop_vars],
-                                      shape_invariants=[invariants],
-                                      parallel_iterations=1,
-                                      name="attend_and_spell_loop")
+        #TODO in training mode pick the last output sometimes.
+        if groundtruth_char is not None:
+            one_hot_char = groundtruth_char
 
-            i, decoder_state, context_vector, char_dist_vec, \
-                char_dist_tensor, rnn_states = loop_vars[0]
-
-            print("char_dist_tensor shape",
-                  tf.Tensor.get_shape(char_dist_tensor))
-            return char_dist_tensor
-
-
-    def cond(self, loop_vars):
-        ''' Condition in charge of the attend and spell
-            while loop. It checks if all the spellers in the current batch
-            are confident of having found an eos token or if the maximum
-            sequence length we expect to see in the data has been reached. '''
-        #the encoding table has the eos token ">" placed at position 0.
-        #i.e. " ", "<", ">", ...
-
-        #pylint: disable=W0612
-        #pylint does not know that the loop_vars are fixed and cannot
-        #       all be used in this function.
-        i, decoder_state, context_vector, char_dist_vec, \
-            char_dist_tensor, rnn_states = loop_vars
-
-        eos_prob = char_dist_vec[:, 0]
-        loop_continue_conditions = tf.logical_and(
-            tf.less(eos_prob, self.eos_treshold),
-            tf.less(i, self.max_target_length))
-
-        loop_continue_counter = tf.reduce_sum(tf.to_int32(
-            loop_continue_conditions))
-        keep_working = tf.not_equal(loop_continue_counter, 0)
-        return keep_working
-
-    def body(self, loop_vars):
-        '''
-        The whole loop body performing the attend and spell computations.
-        '''
-        i, decoder_state, context_vector, char_dist_vec, \
-            char_dist_tensor, rnn_states = loop_vars
-        high_lvl_features = self.high_lvl_features
 
         #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
         #Dimensions:   decoder_state_size , 42
         #            + alphabet_size,       31
         #            + listener_output_dim, 64
         #                                   137
-        rnn_input = tf.concat(1, [decoder_state,
-                                  char_dist_vec,
+        rnn_input = tf.concat(1, [pre_context_states,
+                                  one_hot_char,
                                   context_vector])
-        #TODO: Check this. The papers speak of the state not of the
-        #      output. Is there a clean way to use the state
-        #      of multilayered RNN?
-        decoder_state, rnn_states = self.decoder_rnn(rnn_input,
-                                                     rnn_states)
+
+        pre_context_out, pre_context_states = \
+                self.pre_context_rnn(rnn_input, pre_context_states)
 
         #for loop runing trough the high level features.
         #assert len(high level features) == U.
@@ -256,7 +198,7 @@ class AttendAndSpell(object):
         for feat_vec in high_lvl_features:
             ### compute the attention context. ###
             # e_(i,u) = psi(s_i)^T * phi(h_u)
-            phi = self.state_net(decoder_state)
+            phi = self.state_net(pre_context_out)
             psi = self.featr_net(feat_vec)
             scalar_energy = tf.reduce_sum(psi*phi, reduction_indices=1,
                                           name='dot_sum')
@@ -278,31 +220,29 @@ class AttendAndSpell(object):
                                        [self.las_model.batch_size,
                                         1])
             context_vector = (context_vector
-                              + current_alpha*high_lvl_features[t])
+                              + current_alpha*self.high_lvl_features[t])
 
         #construct the char_net input
-        char_net_input = tf.concat(1, [decoder_state, context_vector])
+        #TODO: add the post_context RNN.
+
+        char_net_input = tf.concat(1, [pre_context_out, context_vector])
         logits = self.char_net(char_net_input)
 
-        # TODO: tf.exp(logits[:,0]) / tf.reduce_sum(tf.exp(logits))
-        # question: can the RNN input take the logits instead of
-        #           the normalized char_dist_vec?
-        char_dist_vec = tf.nn.softmax(logits)
+        #TODO: figure out over which dimension to run the argmax.
+        #max_pos = tf.argmax(logits, 0, name='choose_max')
 
-        debug_here()
+        #one = tf.get_variable('one', shape=(),
+        #                      initializer=tf.constant_initializer(1))
+        #one_hot_char = 0*logits
+        #one_hot_char = tf.scatter_update(1, one)
+        #TODO: remove and use above.
+        one_hot_char = tf.nn.softmax(logits)
 
-        char_dist_vec_shape = tf.Tensor.get_shape(char_dist_vec).as_list()
-        #add a new dimension for concatenenation.
-        char_dist_vec_conc = tf.reshape(char_dist_vec, [1,
-                                                        char_dist_vec_shape[0],
-                                                        char_dist_vec_shape[1]]
-                                       )
-        #concatenate the new result in the first (time) dimension.
-        char_dist_tensor = tf.concat(0, [char_dist_tensor, char_dist_vec_conc])
+        attend_and_spell_states = (pre_context_states, post_context_states,
+            one_hot_char, context_vector)
 
-        loop_vars = (i, decoder_state, context_vector, char_dist_vec,
-                     char_dist_tensor, rnn_states)
-        return [loop_vars]
+        return logits, attend_and_spell_states
+
 
 
 class RNN(object):
@@ -383,10 +323,3 @@ class FeedForwardNetwork(object):
         if self.reuse is None:
             self.reuse = True
         return hidden
-
-def interval_print(interval, time, string, value):
-    '''Print vector shapes only every interval time steps.'''
-    if time%interval == 0:
-        print(string, value)
-
-

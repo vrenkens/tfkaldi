@@ -56,13 +56,13 @@ class BlstmLayer(object):
         #create the model parameters in this layer
         with tf.variable_scope(settings.name + '_parameters'):
             weight_init = tf.random_normal_initializer(stddev=
-                                                    settings.weights_std)
+                                                       settings.weights_std)
             self.weights = tf.get_variable('weights', [2*settings.lstm_dim,
                                                         settings.output_dim],
                                                        initializer=weight_init)
 
             self.biases = tf.get_variable('biases', [settings.output_dim],
-                                       initializer=tf.constant_initializer(0))
+                                    initializer=tf.constant_initializer(0))
 
     def __call__(self, inputs, sequence_length):
         with tf.name_scope(self.name + '_call') as scope:
@@ -102,14 +102,14 @@ class PyramidalBlstmLayer(BlstmLayer):
             #so we have j-1=const for the input list.
             print(self.name + ' initial length ' + str(len(inputs)))
             print(self.name + ' initial shape: ',
-                    tf.Tensor.get_shape(inputs[0]))
+                  tf.Tensor.get_shape(inputs[0]))
             concat_inputs = []
             for time_i in range(1, len(inputs), 2):
                 concat_input = tf.concat(1, [inputs[time_i-1], inputs[time_i]])
                 concat_inputs.append(concat_input)
             print(self.name + ' concat length ' + str(len(concat_inputs)))
             print(self.name + ' concat shape: ',
-                    tf.Tensor.get_shape(concat_inputs[0]))
+                  tf.Tensor.get_shape(concat_inputs[0]))
 
             outputs, _, _ = bidirectional_rnn(self.forward_lstm_block,
                                               self.backward_lstm_block,

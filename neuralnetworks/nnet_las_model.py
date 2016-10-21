@@ -5,7 +5,7 @@ import tensorflow as tf
 sys.path.append("neuralnetworks")
 from nnet_graph import NnetGraph
 from nnet_las_elements import Listener
-from nnet_las_elements import AttendAndSpell
+from nnet_las_elements import AttendAndSpellCell
 from nnet_layer import BlstmSettings
 
 
@@ -39,25 +39,32 @@ class LasModel(NnetGraph):
 
         ###LISTENTER
         print('creating listen functions...')
-
         blstm_settings = BlstmSettings(output_dim=64, lstm_dim=64,
                                        weights_std=0.1, name='blstm')
         plstm_settings = BlstmSettings(self.listen_output_dim,
                                        64, 0.1, 'plstm')
-        #TODO: change pLSTM no back to 3!
+        #TODO: change pLSTM number back to 3!
         self.listener = Listener(blstm_settings, plstm_settings, 1,
                                  self.listen_output_dim)
 
         ###Attend and SPELL
         print('creating attend and spell functions...')
-        self.attend_and_spell = AttendAndSpell(self)
+        self.attend_and_spell_cell = AttendAndSpellCell(self.batch_size)
 
-    def __call__(self):
+    def __call__(self, training):
         print('adding listen computations to the graph...')
         high_level_features = self.listener(self.input_list,
                                             self.seq_lengths)
         print('adding attend computations to the graph...')
-        char_dist_tensor = self.attend_and_spell(high_level_features)
-        return char_dist_tensor
+        if training is True:
+            #training mode
+            self.attend_and_spell_cell.set_features(high_level_features)
+            logits, _ = tf.nn.dynamic_rnn(self.attend_and_spell_cell,
+                                          self.training_inputs)
+        else:
+            #TODO: worry about the decoding version of the graph.
+            pass
+
+        return logits
 
 

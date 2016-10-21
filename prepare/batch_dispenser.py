@@ -8,6 +8,7 @@ from abc import ABCMeta
 from abc import abstractmethod
 import numpy as np
 import prepare.ark
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 ## Class that dispenses batches of data for mini-batch training
 class BatchDispenser(metaclass=ABCMeta):
@@ -29,11 +30,23 @@ class BatchDispenser(metaclass=ABCMeta):
         It must be overwritten in every child class."""
         raise NotImplementedError
 
-    def __init__(self, featureReader, size, text_path, num_labels, max_time):
-        """Abstract constructor for nonexisting general data sets."""
+    def __init__(self, feature_reader, size, text_path, num_labels,
+                 max_time, one_hot_encoding=True):
+        """Abstract constructor for nonexisting general data sets.
+            @param feature_reader: Kaldi ark-file feature reader instance.
+            @param size: Specifies how many utterances should be contained
+                         in each batch.
+            @param text_path: Where the transcripts can be found on disk.
+            @param num_labels: The number of taret labes used in the text file
+                               at text_path.
+            @param max_time: The largest number of input frames in any
+                             utterance from the data set.
+            @param one_hot_encoding: Bool indicating if las style one_hot
+                                     encoding, or ctc style sparse target
+                                     vectors are desired.
+        """
         #store the feature reader
-        # pylint: disable=C0103
-        self.featureReader = featureReader
+        self.feature_reader = feature_reader
         #save the number of labels
         self.num_labels = num_labels
         text_file = open(text_path)
@@ -51,16 +64,20 @@ class BatchDispenser(metaclass=ABCMeta):
         #store the max number of time steps (None if unkown)
         self.max_time = max_time
 
+        self.one_hot_encoding = one_hot_encoding
 
     def get_batch(self):
         """
-        get a batch of features and targets in one-hot encoding.
-        This method formats the targets as a sparse tensor, which
-        can be used in ctc loss computations, and to compute the edit
-        distance with decoded ctc objects.
+        Get a batch of features and targets in one-hot encoding.
+        If self.one_hot_encoding is True this method generates
+        one time major hot encoded tensors
+         ([seq_length x batch_size x no_labels])
+        if self.one_hot_encoding is False, this method formats the targets as
+        a sparse tensor, which can be used in ctc loss computations, and to
+        compute the edit distance with decoded ctc objects.
 
-        @return a batch of data, the corresponding labels as sparse tensorf
-                in one hot encoding
+        @return a batch of data, the corresponding labels as sparse tensor
+                or in a time major one hot encoded dense tensor.
         """
 
         #set up the data lists.
@@ -70,7 +87,7 @@ class BatchDispenser(metaclass=ABCMeta):
 
         while elmnt_cnt < self.size:
             #read utterance
-            utt_id, utt_mat, _ = self.featureReader.get_utt()
+            utt_id, utt_mat, _ = self.feature_reader.get_utt()
 
             #get transcription
             transcription = self.text_dict[utt_id]
@@ -94,7 +111,7 @@ class BatchDispenser(metaclass=ABCMeta):
         batch dispenser and return a feature reader with utt_no
         utterances.
         """
-        return self.featureReader.split_utt(utt_no)
+        return self.feature_reader.split_utt(utt_no)
 
 
     def split_read(self):
@@ -103,14 +120,14 @@ class BatchDispenser(metaclass=ABCMeta):
         this can be used to read a validation set and
         then split it off from the rest
         """
-        self.featureReader.split_read()
+        self.feature_reader.split_read()
 
     def skip_batch(self):
         """skip a batch"""
         elmnt_cnt = 0
         while elmnt_cnt < self.size:
             #read utterance
-            _ = self.featureReader.nextId()
+            _ = self.feature_reader.nextId()
             #update number of utterances in the batch
             elmnt_cnt += 1
 
@@ -119,7 +136,7 @@ class BatchDispenser(metaclass=ABCMeta):
         elmnt_cnt = 0
         while elmnt_cnt < self.size:
             #read utterance
-            _ = self.featureReader.prevId()
+            _ = self.feature_reader.prevId()
             #update number of utterances in the batch
             elmnt_cnt += 1
 
@@ -136,7 +153,7 @@ class BatchDispenser(metaclass=ABCMeta):
     def get_num_utt(self):
         """@return the number of utterances
             the current instance can dinspense."""
-        return self.featureReader.get_utt_no()
+        return self.feature_reader.get_utt_no()
 
     def data_lists_to_batch(self, input_list, target_list):
         """Takes a list of input matrices and a list of target arrays and
@@ -151,6 +168,11 @@ class BatchDispenser(metaclass=ABCMeta):
                         inputs  = 3-d array w/ shape nTimeSteps x batch_size x
                                   n_features
                         targets = tuple required as input for SparseTensor
+                                  or
+                                  tuple of  tensor [seq_length x batch_size x
+                                                    no_labels]
+                                        and max(target sequence lengths)
+                                  depends on self.one_hot_encoding
                         seqLengths = 1-d array with int number of timesteps for
                                      each sample in batch
             """
@@ -181,16 +203,40 @@ class BatchDispenser(metaclass=ABCMeta):
                        "constant", constant_values=0)
             batch_target_list.append(target_list[orig_i])
 
-        sparse_target_data = BatchDispenser.target_list_to_sparse_tensor(
-            batch_target_list)
-        return batch_inputs, sparse_target_data, batch_seq_lengths
+        if self.one_hot_encoding:
+            #create las style one hot encoded targets.
+            target_data = self.target_list_to_one_hot(target_list)
+        else:
+            #create ctc style sparse target vectors.
+            target_data = BatchDispenser.target_list_to_sparse_tensor(
+                batch_target_list)
 
+        return batch_inputs, target_data, batch_seq_lengths
+
+
+    def target_list_to_one_hot(self, target_list):
+        ''' Convert a target list to a list of one hot encoded matrices.
+        @return one hot encoded targets shaped [max_leq_length x batch_size
+                                                no_labels]
+        '''
+        #find the longest target sequence
+        batch_size = self.size
+        max_length = 0
+        for seq in target_list:
+            max_length = max(max_length, seq.shape[0])
+
+        target_mat = np.zeros([max_length, batch_size, self.num_labels])
+        for batch_i, seq in enumerate(target_list):
+            for time_pos, char_code in enumerate(seq):
+                target_mat[time_pos, batch_i, char_code] = 1.0
+
+        return target_mat
 
     @staticmethod
     def target_list_to_sparse_tensor(target_list):
-        """make a tensorflow SparseTensor from list of targets,
+        """Create a tensorflow SparseTensor from a list of targets,
            with each element in the list being a list or array with
-           the values of the targetsequence (e.g., the integer values of a
+           the values of the target sequence (e.g., the integer values of a
            character map for an ASR target string)
         """
         indices = []
@@ -250,7 +296,8 @@ class UttTextDispenser(BatchDispenser):
     """
     Defines a batch dispenser, which uses text targets.
     """
-    def __init__(self, featureReader, size, text_path, num_labels, max_time):
+    def __init__(self, feature_reader, size, text_path,
+                 num_labels, max_time, one_hot_encoding=True):
         #generate a list of allowed unicodes. Everything else will be
         #replaced with (?)
         allowed_chrs = []
@@ -270,8 +317,8 @@ class UttTextDispenser(BatchDispenser):
             code_dict.update({char: key})
         self.code_dict = code_dict
 
-        super().__init__(featureReader, size, text_path,
-                         num_labels, max_time)
+        super().__init__(feature_reader, size, text_path,
+                         num_labels, max_time, one_hot_encoding)
         self.target_label_no = len(self.allowed_chrs)
 
     def encode(self, char_lst):
@@ -327,10 +374,11 @@ class UttTextDispenser(BatchDispenser):
 class PhonemeTextDispenser(BatchDispenser):
     """Defines a batch dispenser wich uses phoneme targets"""
 
-    def __init__(self, featureReader, size, text_path, num_labels, max_time):
+    def __init__(self, feature_reader, size, text_path,
+                 num_labels, max_time, one_hot_encoding=True):
         #initialize the member variables.
-        super().__init__(featureReader, size, text_path,
-                         num_labels, max_time)
+        super().__init__(feature_reader, size, text_path,
+                         num_labels, max_time, one_hot_encoding)
 
         #check the vocabulary.
         vocab_dict = {}
