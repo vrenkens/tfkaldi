@@ -196,9 +196,6 @@ class AttendAndSpell(object):
                                       parallel_iterations=1,
                                       name="attend_and_spell_loop")
 
-            #TODO: FIX THIS.
-            debug_here()
-
             i, decoder_state, context_vector, char_dist_vec, \
                 char_dist_tensor, rnn_states = loop_vars[0]
 
@@ -292,7 +289,16 @@ class AttendAndSpell(object):
         #           the normalized char_dist_vec?
         char_dist_vec = tf.nn.softmax(logits)
 
-        #char_dist_tensor = tf.concat(0, [char_dist_tensor, char_dist_vec])
+        debug_here()
+
+        char_dist_vec_shape = tf.Tensor.get_shape(char_dist_vec).as_list()
+        #add a new dimension for concatenenation.
+        char_dist_vec_conc = tf.reshape(char_dist_vec, [1,
+                                                        char_dist_vec_shape[0],
+                                                        char_dist_vec_shape[1]]
+                                       )
+        #concatenate the new result in the first (time) dimension.
+        char_dist_tensor = tf.concat(0, [char_dist_tensor, char_dist_vec_conc])
 
         loop_vars = (i, decoder_state, context_vector, char_dist_vec,
                      char_dist_tensor, rnn_states)
