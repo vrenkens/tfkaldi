@@ -12,10 +12,12 @@ from __future__ import print_function
 
 
 import matplotlib.pyplot as plt
+import tensorflow as tf
 from prepare.batch_dispenser import PhonemeTextDispenser
 from prepare.batch_dispenser import UttTextDispenser
 from prepare.feature_reader import FeatureReader
 from neuralnetworks.nnet_las_model import LasModel
+from neuralnetworks.nnet_las_trainer import LasTrainer
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 
@@ -89,4 +91,17 @@ test_batch = test_dispenser.get_batch()
 #create the las arcitecture
 las_model = LasModel(max_time_steps, MEL_FEATURE_NO, MAX_BATCH_SIZE,
                      AURORA_LABELS)
-logits = LasModel()
+las_trainer = LasTrainer(las_model, LEARNING_RATE, OMEGA)
+
+print("Graph done, starting computation.")
+with tf.Session(graph=las_trainer.graph) as session:
+    input_batches = []
+    input_batches.append(train_dispenser.get_batch())
+
+
+    eval_loss = las_trainer.evaluate(input_batches, session)
+
+
+
+
+

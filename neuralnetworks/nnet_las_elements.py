@@ -4,6 +4,7 @@ spell network.'''
 from copy import copy
 import sys
 import numpy as np
+import collections
 import tensorflow as tf
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops.rnn_cell import RNNCell
@@ -51,6 +52,30 @@ class Listener(object):
         return hidden_values
 
 
+#create a tf style cell state touple object to derive the actual touple from.
+_AttendAndSpellStateTouple = \
+    collections.namedtuple(
+        "AttendAndSpellStateTouple",
+        "pre_context_states, post_context_states, one_hot_char, context_vector"
+        )
+class StateTouple(_AttendAndSpellStateTouple):
+    """ Tuple used by Attend and spell cells for `state_size`,
+     `zero_state`, and output state.
+      Stores four elements:
+      `(pre_context_states, post_context_states, one_hot_char,
+            context_vector)`, in that order.
+    """
+    @property
+    def dtype(self):
+        """Check if the all internal state variables have the same data-type
+           if yes return that type. """
+        for i in range(1, len(self)):
+            if self[i-1].dtype != self[i].dtype:
+                raise TypeError("Inconsistent internal state: %s vs %s" %
+                                (str(self[i-1].dtype), str(self[i].dtype)))
+        return self[0].dtype
+
+
 class AttendAndSpellCell(RNNCell):
     """
     Define an attend and Spell Cell. This cell takes the high level features
@@ -64,58 +89,15 @@ class AttendAndSpellCell(RNNCell):
                         attention_context function.
           one_hot_char: (y) one hot encoded input and output char.
     """
-    def __init__(self, batch_size, decoder_state_size=42,
+    def __init__(self, las_model, decoder_state_size=42,
                  feedforward_hidden_units=42, feedforward_hidden_layers=4):
         self.feedforward_hidden_units = feedforward_hidden_units
         self.feedforward_hidden_layers = feedforward_hidden_layers
         #the decoder state size must be equal to the RNN size.
         self.dec_state_size = decoder_state_size
         self.high_lvl_features = None
+        self.las_model = las_model
 
-        #----------------------Create Variables-------------------------------#
-        # setting up the decider_state, character distribution
-        # and context vector variables.
-        zero_initializer = tf.constant_initializer(value=0)
-        self.decoder_state = tf.get_variable(
-            name='current_decoder_state',
-            shape=[batch_size, self.dec_state_size],
-            initializer=zero_initializer,
-            trainable=False)
-        # the charater distirbution must initially be the sos token.
-        # assuming encoding done as specified in the batch dispenser.
-        # 0: ' ', 1: '<', 2:'>', ...
-        # initialize to start of sentence token '<' as one hot encoding:
-        # 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-        sos = np.zeros(self.las_model.target_label_no)
-        sos[1] = 1
-        sos_initializer = tf.constant_initializer(sos)
-        self.one_hot_char = tf.get_variable(
-            name='one_hot_char',
-            shape=[batch_size,
-                   self.las_model.target_label_no],
-            initializer=sos_initializer,
-            trainable=False)
-        # the dimension of the context vector is determined by the listener
-        # output dimension.
-        self.context_vector = tf.get_variable(
-            name='context_vector',
-            shape=[batch_size,
-                   self.las_model.listen_output_dim],
-            initializer=zero_initializer,
-            trainable=False)
-
-        self.scalar_energies = tf.get_variable(
-            name='scalar_energies',
-            shape=[self.las_model.listen_output_dim, 1],
-            initializer=zero_initializer,
-            trainable=False)
-
-        self.char_dist_tensor = tf.get_variable(
-            name='char_dist_tensor',
-            shape=[1, batch_size,
-                   self.las_model.target_label_no],
-            initializer=sos_initializer,
-            trainable=False)
         #--------------------Create network functions-------------------------#
         # TODO: Move outside the cell
         # Feedforward layer custom parameters. Vincent knows more about these.
@@ -134,7 +116,6 @@ class AttendAndSpellCell(RNNCell):
         # => all properties, which are not explicitly changed
         # stay the same.
         featr_net_dimension = copy(state_net_dimension)
-        featr_net_dimension.input_dim = self.las_model.listen_output_dim
         self.featr_net = FeedForwardNetwork(featr_net_dimension,
                                             activation, name='featr_net')
 
@@ -161,6 +142,81 @@ class AttendAndSpellCell(RNNCell):
             object makes the cell call simpler.'''
         self.high_lvl_features = high_lvl_features
 
+
+    @property
+    def output_size(self):
+        """Integer or TensorShape: size of outputs produced by this cell.
+        """
+        return self.las_model.target_label_no
+
+    @property
+    def state_size(self):
+        """size(s) of state(s) used by this cell.
+        It can be represented by an Integer,
+        a TensorShape or a tuple of Integers
+        or TensorShapes.
+        """
+        return StateTouple([self.las_model.batch_size,
+                            self.dec_state_size],
+                           [self.las_model.batch_size,
+                            self.las_model.target_label_no],
+                           [self.las_model.batch_size,
+                            self.las_model.target_label_no],
+                           [self.las_model.batch_size,
+                            self.las_model.listen_output_dim])
+
+    def zero_state(self, batch_size, dtype, scope=None):
+        """Return an initial state for the Attend and state cell.
+            @returns an StateTouple object filled with the state variables.
+        """
+        with tf.variable_scope(scope or type(self).__name__):
+            #the batch_size has to be fixed in order to be able to corretly
+            #return the state_sizes, should self.state_size() be called before
+            #the zero states are created.
+            assert batch_size == self.las_model.batch_size
+            assert dtype == self.las_model.dtype
+
+            #----------------------Create Variables---------------------------#
+            # setting up the decoder_RNN_states, character distribution
+            # and context vector variables.
+            zero_initializer = tf.constant_initializer(value=0)
+            pre_context_states = self.pre_context_rnn.get_zero_states(
+                batch_size, dtype)
+            post_context_states = self.post_context_rnn.get_zero_states(
+                batch_size, dtype)
+
+            # The charater distirbution must initially be the sos token.
+            # assuming encoding done as specified in the batch dispenser.
+            # 0: '>', 1: '<', 2:' ', ...
+            # initialize to start of sentence token '<' as one hot encoding:
+            # 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+            sos = np.zeros(self.las_model.target_label_no)
+            sos[1] = 1
+            sos_initializer = tf.constant_initializer(sos)
+            one_hot_char = tf.get_variable(
+                name='one_hot_char',
+                shape=[batch_size,
+                       self.las_model.target_label_no],
+                initializer=sos_initializer,
+                trainable=False, dtype=dtype)
+            # The identity operation Removes the _ref from dtype.
+            # This is required because get_variable creates _ref dtypes,
+            # while the zero states functions create normal dtypes.
+            # without the identity op the network unrolling chrashes.
+            one_hot_char = tf.identity(one_hot_char)
+            # The dimension of the context vector is determined by the listener
+            # output dimension.
+            context_vector = tf.get_variable(
+                name='context_vector',
+                shape=[batch_size,
+                       self.las_model.listen_output_dim],
+                initializer=zero_initializer,
+                trainable=False, dtype=dtype)
+            context_vector = tf.identity(context_vector)
+        return StateTouple(pre_context_states, post_context_states,
+                           one_hot_char, context_vector)
+
+
     def __call__(self, cell_input, state, scope=None):
         """
         Do the computations for a single unrolling of the attend and
@@ -168,7 +224,11 @@ class AttendAndSpellCell(RNNCell):
         During training make sure training_char_input contains
         valid groundtrouth values.
         """
+
         groundtruth_char = cell_input
+        # pylint: disable = E0633
+        # pylint does not know that StateTouple extends a collection
+        # data type.
         pre_context_states, post_context_states, one_hot_char, \
             context_vector = state
 
@@ -179,15 +239,12 @@ class AttendAndSpellCell(RNNCell):
         if groundtruth_char is not None:
             one_hot_char = groundtruth_char
 
-
         #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
-        #Dimensions:   decoder_state_size , 42
-        #            + alphabet_size,       31
+        #Dimensions:   alphabet_size,       31
         #            + listener_output_dim, 64
-        #                                   137
-        rnn_input = tf.concat(1, [pre_context_states,
-                                  one_hot_char,
-                                  context_vector])
+        #                                   95
+        #TODO: One one_hot_char first dim None, why?
+        rnn_input = tf.concat(1, [one_hot_char, context_vector])
 
         pre_context_out, pre_context_states = \
                 self.pre_context_rnn(rnn_input, pre_context_states)
@@ -195,7 +252,7 @@ class AttendAndSpellCell(RNNCell):
         #for loop runing trough the high level features.
         #assert len(high level features) == U.
         scalar_energy_lst = []
-        for feat_vec in high_lvl_features:
+        for feat_vec in self.high_lvl_features:
             ### compute the attention context. ###
             # e_(i,u) = psi(s_i)^T * phi(h_u)
             phi = self.state_net(pre_context_out)
@@ -213,7 +270,7 @@ class AttendAndSpellCell(RNNCell):
         ### find the context vector. ###
         # c_i = sum(alpha*h_i)
         context_vector = 0*context_vector
-        for t in range(0, len(high_lvl_features)):
+        for t in range(0, len(self.high_lvl_features)):
             #reshaping from (batch_size,) to (batch_size,1) is
             #needed for broadcasting.
             current_alpha = tf.reshape(alpha[t, :],
@@ -238,11 +295,32 @@ class AttendAndSpellCell(RNNCell):
         #TODO: remove and use above.
         one_hot_char = tf.nn.softmax(logits)
 
-        attend_and_spell_states = (pre_context_states, post_context_states,
-            one_hot_char, context_vector)
-
+        #pack everyting up in structrus which allow the tensorflow unrolling
+        #functions to do their datatype checking.
+        attend_and_spell_states = StateTouple(
+            RNNStateList(pre_context_states),
+            RNNStateList(post_context_states),
+            one_hot_char,
+            context_vector)
         return logits, attend_and_spell_states
 
+
+class RNNStateList(list):
+    """
+    State List class which allows dtype calls necessary because MultiRNNCell,
+    stores its output in vanilla python lists, which if used as state variables
+    in the Attend and Spell cell cause the tensorflow unrollung function to
+    crash, when it checks the data type.    .
+    """
+    @property
+    def dtype(self):
+        """Check if the all internal state variables have the same data-type
+           if yes return that type. """
+        for i in range(1, len(self)):
+            if self[i-1].dtype != self[i].dtype:
+                raise TypeError("Inconsistent internal state: %s vs %s" %
+                                (str(self[i-1].dtype), str(self[i].dtype)))
+        return self[0].dtype
 
 
 class RNN(object):
@@ -251,26 +329,25 @@ class RNN(object):
     """
     def __init__(self, lstm_dim, name):
         self.name = name
-        self.layer_number = 2
+        self.layer_number = 1
         #create the two required LSTM blocks.
         self.blocks = []
         for _ in range(0, self.layer_number):
             self.blocks.append(rnn_cell.LSTMCell(lstm_dim,
                                                  use_peepholes=True,
-                                                 state_is_tuple=False))
+                                                 state_is_tuple=True))
         self.wrapped_cells = rnn_cell.MultiRNNCell(self.blocks,
-                                                   state_is_tuple=False)
+                                                   state_is_tuple=True)
         self.reuse = None
 
     def get_zero_states(self, batch_size, dtype):
         """ Get a list filled with zero states which can be used
             to start up the unrolled LSTM computations."""
-        return self.wrapped_cells.zero_state(batch_size, dtype)
+        return RNNStateList(self.wrapped_cells.zero_state(batch_size, dtype))
 
     def __call__(self, single_input, state):
         """
-        Computes the RNN outputs for a single input. This CALL MUST BE
-        UNROLLED MANUALLY.
+        Computes the RNN outputs for a single input.
         """
         #assertion only works if state_is_touple is set to true.
         #assert len(state) == len(self.blocks)

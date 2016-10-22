@@ -1,14 +1,14 @@
 
-# fix the pylint import problem.
-# pylint: disable=E0401
-
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.ops import ctc_ops as ctc
 from custompython.lazy_decorator import lazy_property
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
-##Class for the training environment for a neural net graph
-class Trainer(object):
+
+class LasTrainer(object):
+    '''
+    Defines the las training environment.
+    '''
 
     def __init__(self, model, learning_rate, omega):
         '''
@@ -21,16 +21,38 @@ class Trainer(object):
         #store the network graph
         self.learning_rate = learning_rate
         self.omega = omega
-        self.model = model
+        self.model = model #an instance of NnetGraph.
         self.weight_loss = 0
-        with self.model.tf_graph.as_default():
-            #define additional placeholders related to training in the graph.
-            #Target indices, values and shape used to create a sparse tensor.
-            self.target_ixs = tf.placeholder(tf.int64, shape=None)    #indices
-            self.target_vals = tf.placeholder(tf.int32, shape=None)   #vals
-            self.target_shape = tf.placeholder(tf.int64, shape=None)  #shape
-            self.target = tf.SparseTensor(self.target_ixs, self.target_vals,
-                                          self.target_shape)
+
+        # create a tensorflow graph instance, which will serve as the training
+        # graph.
+        self.graph = tf.Graph()
+
+        with self.graph.as_default():
+
+            #Set up a placeholder for the input mel-bank-features.
+            self.inputs = tf.placeholder(tf.float32, shape=(
+                self.model.max_time_steps, self.model.batch_size,
+                self.model.mel_feature_no))
+            self.inputs = tf.unpack(self.inputs, num=self.model.max_time_steps,
+                                    axis=0)
+
+            self.mel_seq_lengths = tf.placeholder(tf.int32,
+                                                  shape=self.model.batch_size)
+
+            # Set up a place holder for the target sequences.
+            # The placeholder expects a shape of
+            # [max_seq_length, batch_size, no_labels].
+            self.targets = tf.placeholder(self.model.dtype, shape=(
+                None, self.model.batch_size, self.model.target_label_no))
+
+
+            #package the inputs to meet the interface.
+            graph_inputs = self.inputs, self.mel_seq_lengths, self.targets
+
+            self.trainlogits, self.modelsaver, _ = \
+                model(graph_inputs, is_training=True, reuse=False)
+
 
             # Make sure all properties are added to the trainer object upon
             # initialization.
@@ -45,8 +67,8 @@ class Trainer(object):
             does the training.
         '''
         #compute the model output.
-        logits = self.model()
-        loss = self.compute_loss(self.target, logits)
+        logits = self.trainlogits
+        loss = LasTrainer.compute_loss(self.targets, logits)
 
         #add the weight and bias l2 norms to the loss.
         trainable_weights = tf.trainable_variables()
@@ -81,10 +103,8 @@ class Trainer(object):
     #    return tf.slice(tf.argmax(self.model.logits, 2), [0, 0],
     #                    [self.model.seq_lengths[0], 1])
 
-    #pylint: disable=R0201
-    #method could be a function, but it would not be smart to have a compute
-    #loss function for all trainers. It is thus made a class method here.
-    def compute_loss(self, targets, logits):
+    @staticmethod
+    def compute_loss(targets, logits):
         '''Creates the operation to compute the cross-enthropy loss for every
          input frame (if you want to have a different loss function,
          overwrite this method)
@@ -108,7 +128,7 @@ def update(self, batched_data_list, session):
     batch_losses = np.zeros(len(batched_data_list))
     batch_errors = np.zeros(len(batched_data_list))
     for no, batch in enumerate(batched_data_list):
-        feed_dict, batch_seq_lengths = self.create_dict(batch, True)
+        feed_dict = self.create_dict(batch, True)
         _, l, wl, er, lmt = session.run([self.optimizer, self.loss,
                                          self.weight_loss,
                                          self.error_rate,
@@ -135,22 +155,15 @@ def evaluate(self, batched_data_list, session):
     noise.
     '''
     batch_losses = np.zeros(len(batched_data_list))
-    batch_errors = np.zeros(len(batched_data_list))
     for no, batch in enumerate(batched_data_list):
-        feed_dict, batch_seq_lengths = self.create_dict(batch, False)
-        l, wl, er = session.run([self.loss,
-                                 self.weight_loss,
-                                 self.error_rate],
-                                feed_dict=feed_dict)
+        feed_dict = self.create_dict(batch, False)
+        l = session.run([self.loss],
+                        feed_dict=feed_dict)
         if (no % 1) == 0:
-            print('Minibatch loss:', l, "weight loss:", wl)
-            print('Minibatch error rate:', er)
-        batch_errors[no] = er
+            print('Minibatch loss:')
         batch_losses[no] = l
-    eval_error_rate = batch_errors.sum() / len(batched_data_list)
     eval_loss = batch_losses.sum() / len(batched_data_list)
-    return eval_loss, eval_error_rate
-
+    return eval_loss
 
 def create_dict(self, batch, noise_bool):
     '''Create an input dictonary to be fed into the tree.
@@ -159,15 +172,12 @@ def create_dict(self, batch, noise_bool):
     the three sparse vector data components and the
     sequence legths of each utterance.'''
 
-    batch_inputs, batch_trgt_sparse, batch_seq_lengths = batch
+    batch_mel_inputs, batch_targets, batch_mel_lengths = batch
     batch_trgt_ixs, batch_trgt_vals, batch_trgt_shape = batch_trgt_sparse
-    res_feed_dict = {self.model.input_x: batch_inputs,
-                     self.target_ixs: batch_trgt_ixs,
-                     self.target_vals: batch_trgt_vals,
-                     self.target_shape: batch_trgt_shape,
-                     self.model.seq_lengths: batch_seq_lengths,
-                     self.model.noise_wanted: noise_bool}
-    return res_feed_dict, batch_seq_lengths
+    res_feed_dict = {self.inputs: batch_mel_inputs,
+                     self.targets: batch_targets,
+                     self.mel_seq_lengths: batch_mel_lengths}
+    return res_feed_dict
 
 def initialize(self):
     tf.initialize_all_variables().run()

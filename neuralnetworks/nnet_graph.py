@@ -13,7 +13,7 @@ class NnetGraph(object):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def __call__(self, inputs):
+    def __call__(self, inputs, is_training=False, reuse=True, scope=None):
         raise NotImplementedError("Abstract method")
 
     def __init__(self, output_dim):

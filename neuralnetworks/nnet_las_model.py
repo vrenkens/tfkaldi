@@ -7,6 +7,7 @@ from nnet_graph import NnetGraph
 from nnet_las_elements import Listener
 from nnet_las_elements import AttendAndSpellCell
 from nnet_layer import BlstmSettings
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 
 class LasModel(NnetGraph):
@@ -22,21 +23,6 @@ class LasModel(NnetGraph):
         self.target_label_no = target_label_no
         self.listen_output_dim = 64
 
-        #### Graph input shape=(max_time_steps, batch_size, mel_feature_no),
-            #    but the first two change.
-        self.input_x = tf.placeholder(self.dtype,
-                                      shape=(self.max_time_steps,
-                                             batch_size, self.mel_feature_no),
-                                      name='mel_feature_input')
-        #Prep input data to fit requirements of tf.rnn.bidirectional_rnn(')
-        #Split to get a list of 'n_steps' tensors of shape
-        # (batch_size, self.input_dim)
-        self.input_list = tf.unpack(self.input_x, num=self.max_time_steps,
-                                    axis=0)
-
-        self.seq_lengths = tf.placeholder(tf.int32, shape=batch_size,
-                                          name='seq_lengths')
-
         ###LISTENTER
         print('creating listen functions...')
         blstm_settings = BlstmSettings(output_dim=64, lstm_dim=64,
@@ -44,27 +30,38 @@ class LasModel(NnetGraph):
         plstm_settings = BlstmSettings(self.listen_output_dim,
                                        64, 0.1, 'plstm')
         #TODO: change pLSTM number back to 3!
-        self.listener = Listener(blstm_settings, plstm_settings, 1,
+        self.listener = Listener(blstm_settings, plstm_settings, 3,
                                  self.listen_output_dim)
 
         ###Attend and SPELL
         print('creating attend and spell functions...')
-        self.attend_and_spell_cell = AttendAndSpellCell(self.batch_size)
+        self.attend_and_spell_cell = AttendAndSpellCell(las_model=self)
 
-    def __call__(self, training):
-        print('adding listen computations to the graph...')
-        high_level_features = self.listener(self.input_list,
-                                            self.seq_lengths)
-        print('adding attend computations to the graph...')
-        if training is True:
-            #training mode
-            self.attend_and_spell_cell.set_features(high_level_features)
-            logits, _ = tf.nn.dynamic_rnn(self.attend_and_spell_cell,
-                                          self.training_inputs)
-        else:
-            #TODO: worry about the decoding version of the graph.
-            pass
+    def __call__(self, inputs, is_training=False, reuse=True, scope=None):
 
-        return logits
+        input_list, seq_lengths, training_inputs = inputs
+        with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
+            print('adding listen computations to the graph...')
+            high_level_features = self.listener(input_list,
+                                                seq_lengths)
+            print('adding attend computations to the graph...')
+            if is_training is True:
+                #training mode
+                self.attend_and_spell_cell.set_features(high_level_features)
+                zero_state = self.attend_and_spell_cell.zero_state(
+                    self.batch_size, self.dtype)
+                logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
+                                              inputs=training_inputs,
+                                              initial_state=zero_state)
+            else:
+                #TODO: worry about the decoding version of the graph.
+                logits = None
+
+            #TODO: What does the saver do? Or come up with some better then
+            #cerate a saver.
+            saver = tf.train.Saver()
+
+        #None is returned as no control ops are defined yet.
+        return logits, saver, None
 
 
