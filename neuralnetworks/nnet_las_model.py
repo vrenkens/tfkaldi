@@ -6,7 +6,6 @@ sys.path.append("neuralnetworks")
 from nnet_graph import NnetGraph
 from nnet_las_elements import Listener
 from nnet_las_elements import AttendAndSpellCell
-from nnet_layer import BlstmSettings
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 
@@ -24,14 +23,9 @@ class LasModel(NnetGraph):
         self.listen_output_dim = 64
 
         ###LISTENTER
-        print('creating listen functions...')
-        blstm_settings = BlstmSettings(output_dim=64, lstm_dim=64,
-                                       weights_std=0.1, name='blstm')
-        plstm_settings = BlstmSettings(self.listen_output_dim,
-                                       64, 0.1, 'plstm')
-        #TODO: change pLSTM number back to 3!
-        self.listener = Listener(blstm_settings, plstm_settings, 3,
-                                 self.listen_output_dim)
+        self.listener = Listener(lstm_dim=42, plstm_layer_no=3,
+                                 output_dim=self.listen_output_dim,
+                                 out_weights_std=0.1)
 
         ###Attend and SPELL
         print('creating attend and spell functions...')
@@ -52,7 +46,8 @@ class LasModel(NnetGraph):
                     self.batch_size, self.dtype)
                 logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
                                               inputs=training_inputs,
-                                              initial_state=zero_state)
+                                              initial_state=zero_state,
+                                              time_major=True)
             else:
                 #TODO: worry about the decoding version of the graph.
                 logits = None

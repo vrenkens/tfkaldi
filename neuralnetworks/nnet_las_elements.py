@@ -3,8 +3,8 @@ spell network.'''
 
 from copy import copy
 import sys
-import numpy as np
 import collections
+import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops.rnn_cell import RNNCell
@@ -12,9 +12,9 @@ from tensorflow.python.ops.rnn_cell import RNNCell
 # we are currenly in neuralnetworks, add it to the path.
 sys.path.append("neuralnetworks")
 from nnet_layer import BlstmLayer
-from nnet_layer import PyramidalBlstmLayer
 from nnet_layer import FFLayer
 from nnet_activations import TfWrapper
+from nnet_activations import IdentityWrapper
 
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
@@ -25,32 +25,59 @@ class Listener(object):
     """
     A set of pyramidal blstms, which compute high level audio features.
     """
-    def __init__(self, blstm_settings, plstm_settings, plstm_layer_no,
-                 output_dim):
+    def __init__(self, lstm_dim, plstm_layer_no, output_dim, out_weights_std):
         """ Initialize the listener.
         """
         self.output_dim = output_dim
+        self.lstm_dim = lstm_dim
+        self.plstm_layer_no = plstm_layer_no
+        self.output_dim = output_dim
+
         #the Listerner foundation is a classical bidirectional Long Short
         #term mermory layer.
-        blstm_settings.name = 'blstm_layer0'
-        self.blstm_layer = BlstmLayer(blstm_settings)
+        self.blstm_layer = BlstmLayer(lstm_dim, pyramidal=False)
         #on top of are three pyramidal BLSTM layers.
         self.plstms = []
-        for layer_count in range(plstm_layer_no):
-            plstm_settings.name = 'plstm_layer_' + str(layer_count)
-            if (layer_count+1) == len(self.plstms):
-                plstm_settings.output_dim = output_dim
-            self.plstms.append(PyramidalBlstmLayer(plstm_settings))
+        for _ in range(plstm_layer_no):
+            self.plstms.append(BlstmLayer(lstm_dim, pyramidal=True))
+
+        identity_activation = IdentityWrapper()
+        self.output_layer = FFLayer(output_dim, identity_activation,
+                                    out_weights_std)
+        self.reuse = None
 
     def __call__(self, input_features, sequence_lengths):
         """ Compute the output of the listener function. """
         #compute the base layer blstm output.
-        hidden_values = self.blstm_layer(input_features, sequence_lengths)
-        #move on to the plstm ouputs.
-        for plstm_layer in self.plstms:
-            hidden_values = plstm_layer(hidden_values)
-        return hidden_values
+        with tf.variable_scope(type(self).__name__, reuse=self.reuse):
+            hidden_values = self.blstm_layer(input_features, sequence_lengths,
+                                             reuse=self.reuse,
+                                             scope=("blstm_layer"))
+            #move on to the plstm ouputs.
+            for counter, plstm_layer in enumerate(self.plstms):
+                hidden_values = plstm_layer(hidden_values, sequence_lengths,
+                                            reuse=self.reuse,
+                                            scope=("plstm_layer_"
+                                                   + str(counter)))
+            output_values = self.linear_output_layer(hidden_values)
+        if self.reuse is None:
+            self.reuse = True
+        return output_values
 
+    def linear_output_layer(self, hidden_values):
+        """ Run the concatenated forward and backward layer computations trough
+            a simple linear output layer as described in:
+            Speech recognition with deep recurrent neural networks,
+            Graves, A, Mohamed, A.-R., Hinton, G
+        """
+        reuse = None
+        output_values = []
+        for output_value in hidden_values:
+            output_values.append(self.output_layer(
+                output_value, reuse=reuse, scope=("linear_output_layer")))
+            if reuse is None:
+                reuse = True
+        return output_values
 
 #create a tf style cell state touple object to derive the actual touple from.
 _AttendAndSpellStateTouple = \
@@ -107,8 +134,7 @@ class AttendAndSpellCell(RNNCell):
         state_net_dimension = FFNetDimension(self.dec_state_size,
                                              self.feedforward_hidden_units,
                                              self.feedforward_hidden_units,
-                                             self.feedforward_hidden_layers
-                                            )
+                                             self.feedforward_hidden_layers)
 
         self.state_net = FeedForwardNetwork(state_net_dimension,
                                             activation, name='state_net')
@@ -135,6 +161,9 @@ class AttendAndSpellCell(RNNCell):
                                            activation,
                                            name='char_net')
 
+        #---------------------One hot char selection variables----------------#
+        self.ones = None
+        self.one_hot_char_shape = None
 
 
     def set_features(self, high_lvl_features):
@@ -165,11 +194,12 @@ class AttendAndSpellCell(RNNCell):
                            [self.las_model.batch_size,
                             self.las_model.listen_output_dim])
 
-    def zero_state(self, batch_size, dtype, scope=None):
+    def zero_state(self, batch_size, dtype, scope=None, reuse=None):
         """Return an initial state for the Attend and state cell.
             @returns an StateTouple object filled with the state variables.
         """
-        with tf.variable_scope(scope or type(self).__name__):
+        zero_state_scope = scope or (type(self).__name__+ "_zero_state")
+        with tf.variable_scope(zero_state_scope, reuse=reuse):
             #the batch_size has to be fixed in order to be able to corretly
             #return the state_sizes, should self.state_size() be called before
             #the zero states are created.
@@ -204,6 +234,7 @@ class AttendAndSpellCell(RNNCell):
             # while the zero states functions create normal dtypes.
             # without the identity op the network unrolling chrashes.
             one_hot_char = tf.identity(one_hot_char)
+            print("shape one_hot_char:", tf.Tensor.get_shape(one_hot_char))
             # The dimension of the context vector is determined by the listener
             # output dimension.
             context_vector = tf.get_variable(
@@ -213,95 +244,119 @@ class AttendAndSpellCell(RNNCell):
                 initializer=zero_initializer,
                 trainable=False, dtype=dtype)
             context_vector = tf.identity(context_vector)
+            print("shape context_vector:", tf.Tensor.get_shape(context_vector))
+
+            #--------------------Create one hot char constants----------------#
+            ones_init = np.ones(self.las_model.batch_size)
+            self.ones = tf.constant(ones_init, dtype=dtype)
+            self.one_hot_char_shape = tf.constant(
+                [self.las_model.batch_size, self.las_model.target_label_no],
+                dtype=tf.int64)
+
+
         return StateTouple(pre_context_states, post_context_states,
                            one_hot_char, context_vector)
 
 
-    def __call__(self, cell_input, state, scope=None):
+    def __call__(self, cell_input, state, scope=None, reuse=False):
         """
         Do the computations for a single unrolling of the attend and
         spell network.
         During training make sure training_char_input contains
         valid groundtrouth values.
         """
+        as_cell_call_scope = scope or (type(self).__name__+ "_call")
+        with tf.variable_scope(as_cell_call_scope, reuse=reuse):
+            groundtruth_char = cell_input
+            # pylint: disable = E0633
+            # pylint does not know that StateTouple extends a collection
+            # data type.
+            pre_context_states, post_context_states, one_hot_char, \
+                context_vector = state
 
-        groundtruth_char = cell_input
-        # pylint: disable = E0633
-        # pylint does not know that StateTouple extends a collection
-        # data type.
-        pre_context_states, post_context_states, one_hot_char, \
-            context_vector = state
+            if self.high_lvl_features is None:
+                raise AttributeError("Features must be set.")
 
-        if self.high_lvl_features is None:
-            raise AttributeError("Features must be set.")
+            #TODO in training mode pick the last output sometimes.
+            if groundtruth_char is not None:
+                one_hot_char = groundtruth_char
 
-        #TODO in training mode pick the last output sometimes.
-        if groundtruth_char is not None:
-            one_hot_char = groundtruth_char
+            #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
+            #Dimensions:   alphabet_size,       31
+            #            + listener_output_dim, 64
+            #                                   95
+            rnn_input = tf.concat(1, [one_hot_char, context_vector],
+                                  name='pre_context_rnn_input_concat')
 
-        #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
-        #Dimensions:   alphabet_size,       31
-        #            + listener_output_dim, 64
-        #                                   95
-        #TODO: One one_hot_char first dim None, why?
-        rnn_input = tf.concat(1, [one_hot_char, context_vector])
+            pre_context_out, pre_context_states = \
+                    self.pre_context_rnn(rnn_input, pre_context_states)
 
-        pre_context_out, pre_context_states = \
-                self.pre_context_rnn(rnn_input, pre_context_states)
+            #for loop runing trough the high level features.
+            #assert len(high level features) == U.
+            scalar_energy_lst = []
+            for feat_vec in self.high_lvl_features:
+                ### compute the attention context. ###
+                # e_(i,u) = psi(s_i)^T * phi(h_u)
+                phi = self.state_net(pre_context_out)
+                psi = self.featr_net(feat_vec)
+                scalar_energy = tf.reduce_sum(psi*phi, reduction_indices=1,
+                                              name='dot_sum')
 
-        #for loop runing trough the high level features.
-        #assert len(high level features) == U.
-        scalar_energy_lst = []
-        for feat_vec in self.high_lvl_features:
-            ### compute the attention context. ###
-            # e_(i,u) = psi(s_i)^T * phi(h_u)
-            phi = self.state_net(pre_context_out)
-            psi = self.featr_net(feat_vec)
-            scalar_energy = tf.reduce_sum(psi*phi, reduction_indices=1,
-                                          name='dot_sum')
+                scalar_energy_lst.append(scalar_energy)
+            # alpha = softmax(e_(i,u))
+            scalar_energy_tensor = tf.convert_to_tensor(scalar_energy_lst)
+            #Alpha has the same shape as the scalar_energy_tensor
+            alpha = tf.nn.softmax(scalar_energy_tensor)
 
-            scalar_energy_lst.append(scalar_energy)
-        # alpha = softmax(e_(i,u))
-        scalar_energy_tensor = tf.convert_to_tensor(
-            scalar_energy_lst)
-        #Alpha has the same shape as the scalar_energy_tensor
-        alpha = tf.nn.softmax(scalar_energy_tensor)
+            #record the scalar_enrgies and alphas for later analysis.
+            tf.histogram_summary('scalar_energies', scalar_energy_tensor)
+            tf.histogram_summary('alphas', alpha)
 
-        ### find the context vector. ###
-        # c_i = sum(alpha*h_i)
-        context_vector = 0*context_vector
-        for t in range(0, len(self.high_lvl_features)):
-            #reshaping from (batch_size,) to (batch_size,1) is
-            #needed for broadcasting.
-            current_alpha = tf.reshape(alpha[t, :],
-                                       [self.las_model.batch_size,
-                                        1])
-            context_vector = (context_vector
-                              + current_alpha*self.high_lvl_features[t])
+            ### find the context vector. ###
+            # c_i = sum(alpha*h_i)
+            context_vector = 0*context_vector
+            for t in range(0, len(self.high_lvl_features)):
+                #reshaping from (batch_size,) to (batch_size,1) is
+                #needed for broadcasting.
+                current_alpha = tf.reshape(alpha[t, :],
+                                           [self.las_model.batch_size,
+                                            1])
+                context_vector = (context_vector
+                                  + current_alpha*self.high_lvl_features[t])
 
-        #construct the char_net input
-        #TODO: add the post_context RNN.
+            #construct the char_net input
+            #TODO: use post_context RNN. update char_net_input
+            #post_context_out, post_context_states = \
+            #    self.post_context_rnn(context_vector, post_context_states)
 
-        char_net_input = tf.concat(1, [pre_context_out, context_vector])
-        logits = self.char_net(char_net_input)
+            char_net_input = tf.concat(1, [pre_context_out, context_vector],
+                                       name='char_net_input_concat')
+            logits = self.char_net(char_net_input)
 
-        #TODO: figure out over which dimension to run the argmax.
-        #max_pos = tf.argmax(logits, 0, name='choose_max')
+            # Run the argmax on the character dimension.
+            # logits has dimensions [batch_size, num_labels]
+            max_pos = tf.argmax(logits, 1, name='choose_max_prob_char')
+            max_pos_lst = tf.unpack(max_pos)
+            sparse_idx_lst = []
+            for batch_no, char_no in enumerate(max_pos_lst):
+                sparse_idx_lst.append([batch_no, char_no])
+            sparse_idx = tf.convert_to_tensor(sparse_idx_lst)
+            one_hot_char = tf.SparseTensor(sparse_idx,
+                                           self.ones,
+                                           self.one_hot_char_shape)
+            one_hot_char = tf.sparse_tensor_to_dense(one_hot_char)
+            #sparse_to_dense does not set the shape right.
+            #doing that manually.
+            np_shape = tf.contrib.util.constant_value(self.one_hot_char_shape)
+            one_hot_char.set_shape(np_shape)
 
-        #one = tf.get_variable('one', shape=(),
-        #                      initializer=tf.constant_initializer(1))
-        #one_hot_char = 0*logits
-        #one_hot_char = tf.scatter_update(1, one)
-        #TODO: remove and use above.
-        one_hot_char = tf.nn.softmax(logits)
-
-        #pack everyting up in structrus which allow the tensorflow unrolling
-        #functions to do their datatype checking.
-        attend_and_spell_states = StateTouple(
-            RNNStateList(pre_context_states),
-            RNNStateList(post_context_states),
-            one_hot_char,
-            context_vector)
+            #pack everyting up in structrus which allow the tensorflow unrolling
+            #functions to do their datatype checking.
+            attend_and_spell_states = StateTouple(
+                RNNStateList(pre_context_states),
+                RNNStateList(post_context_states),
+                one_hot_char,
+                context_vector)
         return logits, attend_and_spell_states
 
 

@@ -56,6 +56,17 @@ class Activation(object):
         """
         raise NotImplementedError("Abstract method")
 
+
+class IdentityWrapper(Activation):
+    """ A simple idintitiy activation which is intended for usage with
+        simple linear layers. """
+    def __init__(self, activation=None):
+        super(IdentityWrapper, self).__init__(activation)
+
+    def _apply_func(self, activations, is_training, reuse):
+        """ Simply return the inputs = activataions. """
+        return activations
+
 class TfWrapper(Activation):
     """ a wrapper for an activation function that will add
         a tf activation function

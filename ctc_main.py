@@ -201,7 +201,6 @@ with tf.Session(graph=trainer.model.tf_graph) as session:
     test_lst = [test_dispenser.get_batch()]
     tl, ter = trainer.evaluate(test_lst, session)
     print("test loss: ", tl, "test error rate", ter)
-    epoch_error_lst_val.append(ver)
 
 filename = "saved/savedValsBLSTMAdam." + socket.gethostname() + ".pkl"
 pickle.dump([epoch_loss_lst, epoch_error_lst,
