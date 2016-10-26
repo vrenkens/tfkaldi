@@ -33,8 +33,8 @@ class Listener(object):
         self.plstm_layer_no = plstm_layer_no
         self.output_dim = output_dim
 
-        #the Listerner foundation is a classical bidirectional Long Short
-        #term mermory layer.
+        #the listener foundation is a classical bidirectional Long Short
+        #term memory layer.
         self.blstm_layer = BlstmLayer(lstm_dim, pyramidal=False)
         #on top of are three pyramidal BLSTM layers.
         self.plstms = []
@@ -53,7 +53,7 @@ class Listener(object):
             hidden_values = self.blstm_layer(input_features, sequence_lengths,
                                              reuse=self.reuse,
                                              scope=("blstm_layer"))
-            #move on to the plstm ouputs.
+            #move on to the plstm outputs.
             for counter, plstm_layer in enumerate(self.plstms):
                 hidden_values = plstm_layer(hidden_values, sequence_lengths,
                                             reuse=self.reuse,
@@ -79,7 +79,7 @@ class Listener(object):
                 reuse = True
         return output_values
 
-#create a tf style cell state touple object to derive the actual touple from.
+#create a tf style cell state tuple object to derive the actual tuple from.
 _AttendAndSpellStateTouple = \
     collections.namedtuple(
         "AttendAndSpellStateTouple",
@@ -106,7 +106,7 @@ class StateTouple(_AttendAndSpellStateTouple):
 class AttendAndSpellCell(RNNCell):
     """
     Define an attend and Spell Cell. This cell takes the high level features
-    as input. During training the groundtrouth values are fed into the network
+    as input. During training the groundtruth values are fed into the network
     as well.
 
     Internal Variables:
@@ -116,8 +116,8 @@ class AttendAndSpellCell(RNNCell):
                         attention_context function.
           one_hot_char: (y) one hot encoded input and output char.
     """
-    def __init__(self, las_model, decoder_state_size=42,
-                 feedforward_hidden_units=42, feedforward_hidden_layers=4):
+    def __init__(self, las_model, decoder_state_size=40,
+                 feedforward_hidden_units=20, feedforward_hidden_layers=3):
         self.feedforward_hidden_units = feedforward_hidden_units
         self.feedforward_hidden_layers = feedforward_hidden_layers
         #the decoder state size must be equal to the RNN size.
@@ -125,9 +125,12 @@ class AttendAndSpellCell(RNNCell):
         self.high_lvl_features = None
         self.las_model = las_model
 
+        #Determines whether the post_context_rnn will be used.
+        self.type_two = True
+
         #--------------------Create network functions-------------------------#
         # TODO: Move outside the cell
-        # Feedforward layer custom parameters. Vincent knows more about these.
+        # Feed-forward layer custom parameters. Vincent knows more about these.
         activation = None
         activation = TfWrapper(activation, tf.nn.relu)
 
@@ -215,7 +218,7 @@ class AttendAndSpellCell(RNNCell):
             post_context_states = self.post_context_rnn.get_zero_states(
                 batch_size, dtype)
 
-            # The charater distirbution must initially be the sos token.
+            # The character distribution must initially be the sos token.
             # assuming encoding done as specified in the batch dispenser.
             # 0: '>', 1: '<', 2:' ', ...
             # initialize to start of sentence token '<' as one hot encoding:
@@ -291,17 +294,17 @@ class AttendAndSpellCell(RNNCell):
             pre_context_out, pre_context_states = \
                     self.pre_context_rnn(rnn_input, pre_context_states)
 
-            #for loop runing trough the high level features.
+            #for loop running trough the high level features.
             #assert len(high level features) == U.
+
+            phi = self.state_net(pre_context_out)
             scalar_energy_lst = []
             for feat_vec in self.high_lvl_features:
                 ### compute the attention context. ###
                 # e_(i,u) = psi(s_i)^T * phi(h_u)
-                phi = self.state_net(pre_context_out)
                 psi = self.featr_net(feat_vec)
                 scalar_energy = tf.reduce_sum(psi*phi, reduction_indices=1,
                                               name='dot_sum')
-
                 scalar_energy_lst.append(scalar_energy)
             # alpha = softmax(e_(i,u))
             scalar_energy_tensor = tf.convert_to_tensor(scalar_energy_lst)
@@ -309,8 +312,12 @@ class AttendAndSpellCell(RNNCell):
             alpha = tf.nn.softmax(scalar_energy_tensor)
 
             #record the scalar_enrgies and alphas for later analysis.
-            tf.histogram_summary('scalar_energies', scalar_energy_tensor)
-            tf.histogram_summary('alphas', alpha)
+            #TODO: Fix:
+            # InvalidArgumentError: All inputs to node MergeSummary/
+            # MergeSummary must be from the same frame.
+            #Error!!!
+            #tf.histogram_summary('scalar_energies', scalar_energy_tensor)
+            #tf.histogram_summary('alphas', alpha)
 
             ### find the context vector. ###
             # c_i = sum(alpha*h_i)
@@ -324,13 +331,17 @@ class AttendAndSpellCell(RNNCell):
                 context_vector = (context_vector
                                   + current_alpha*self.high_lvl_features[t])
 
-            #construct the char_net input
-            #TODO: use post_context RNN. update char_net_input
-            #post_context_out, post_context_states = \
-            #    self.post_context_rnn(context_vector, post_context_states)
-
-            char_net_input = tf.concat(1, [pre_context_out, context_vector],
-                                       name='char_net_input_concat')
+            if self.type_two is True:
+                post_context_out, post_context_states = \
+                self.post_context_rnn(context_vector, post_context_states)
+                char_net_input = tf.concat(1,
+                                           [pre_context_out,
+                                            post_context_out],
+                                           name='char_net_input_concat')
+            else:
+                char_net_input = tf.concat(1,
+                                           [pre_context_out, context_vector],
+                                           name='char_net_input_concat')
             logits = self.char_net(char_net_input)
 
             # Run the argmax on the character dimension.
@@ -350,8 +361,8 @@ class AttendAndSpellCell(RNNCell):
             np_shape = tf.contrib.util.constant_value(self.one_hot_char_shape)
             one_hot_char.set_shape(np_shape)
 
-            #pack everyting up in structrus which allow the tensorflow unrolling
-            #functions to do their datatype checking.
+            # pack everything up in structures which allow the
+            # tensorflow unrolling functions to do their data-type checking.
             attend_and_spell_states = StateTouple(
                 RNNStateList(pre_context_states),
                 RNNStateList(post_context_states),

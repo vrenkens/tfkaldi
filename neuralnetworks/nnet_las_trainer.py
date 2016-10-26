@@ -61,7 +61,8 @@ class LasTrainer(object):
             self.loss
             self.optimizer = self.clipped_optimizer
 
-            self.summary_writer = tf.train.SummaryWriter('log', self.graph)
+            self.summary_writer = tf.train.SummaryWriter(logdir='log',
+                                                         graph=self.graph)
             # Create the summary operation. If passed to the session the
             # recorded values are returned and can be written to disk with the
             # summary writer.
@@ -153,7 +154,7 @@ class LasTrainer(object):
             l, merged = session.run([self.loss, self.merged_summaries],
                                     feed_dict=feed_dict)
             if (no % 1) == 0:
-                print('Minibatch loss:', l)
+                print('Batch loss:', l)
                 self.summary_writer.add_summary(merged, global_step=epoch)
             batch_losses[no] = l
         eval_loss = batch_losses.sum() / len(batched_data_list)

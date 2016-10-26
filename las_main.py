@@ -11,6 +11,7 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+import datetime
 import pickle
 import socket
 import matplotlib.pyplot as plt
@@ -55,7 +56,7 @@ INPUT_NOISE_STD = 0.6
 #LEARNING_RATE = 0.0001       #too low?
 #MOMENTUM = 0.6              #play with this.
 MAX_N_EPOCHS = 900
-OVERFIT_TOL = 0.3
+OVERFIT_TOL = 99999
 
 ####Network Parameters
 n_features = 40
@@ -66,22 +67,23 @@ AURORA_LABELS = 32
 AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
-MAX_BATCH_SIZE = 128
+MAX_BATCH_SIZE = 64
 MEL_FEATURE_NO = 40
 
 train_dispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
                                      MAX_BATCH_SIZE, PHONEMES)
 TEST = "test/40fbank"
 val_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                   128, PHONEMES)
+                                   MAX_BATCH_SIZE, PHONEMES)
 
 test_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                    128, PHONEMES)
+                                    MAX_BATCH_SIZE, PHONEMES)
 
 test_feature_reader = val_dispenser.split_reader(606)
 test_dispenser.feature_reader = test_feature_reader
 
-BATCH_COUNT = train_dispenser.get_batch_count()
+#BATCH_COUNT = train_dispenser.get_batch_count()
+BATCH_COUNT = 5
 BATCH_COUNT_VAL = val_dispenser.get_batch_count()
 BATCH_COUNT_TEST = test_dispenser.get_batch_count()
 print(BATCH_COUNT, BATCH_COUNT_VAL, BATCH_COUNT_TEST)
@@ -111,12 +113,12 @@ with tf.Session(graph=las_trainer.graph) as session:
     for batch in range(0, 2):
         input_batches.append(train_dispenser.get_batch())
 
-    eval_loss = las_trainer.evaluate(input_batches, session)
+    eval_loss = las_trainer.evaluate(input_batches, session, 1)
 
-    val_lst = [val_dispenser.get_batch()]
-    vl = las_trainer.evaluate(val_lst, session, 1)
-    print("untrained validation loss: ", vl)
-    epoch_loss_lst_val.append(vl)
+    #val_lst = [val_dispenser.get_batch()]
+    #vl = las_trainer.evaluate(val_lst, session, 1)
+    #print("untrained validation loss: ", vl)
+    #epoch_loss_lst_val.append(vl)
 
     continue_training = True
     while continue_training:
@@ -151,14 +153,18 @@ with tf.Session(graph=las_trainer.graph) as session:
                 continue_training = False
                 print("stopping the training.")
         else:
-            print("validation errors", epoch_loss_lst_val, epoch)
+            print("validation losses", epoch_loss_lst_val, epoch)
 
     #run the network on the test data set.
     test_lst = [test_dispenser.get_batch()]
     tl = las_trainer.evaluate(test_lst, session, epoch+1)
     print("test loss: ", tl)
 
-filename = "saved/savedValsLastAdam." + socket.gethostname() + ".pkl"
+now = datetime.datetime.now()
+filename = "saved/savedValsLastAdam." \
+           + socket.gethostname() \
+           + str(now) \
+           + ".pkl"
 pickle.dump([epoch_loss_lst, epoch_loss_lst_val, tl, LEARNING_RATE,
              MOMENTUM, OMEGA], open(filename, "wb"))
 print("plot values saved at: " + filename)
@@ -168,4 +174,4 @@ plt.plot(np.array(epoch_loss_lst_val))
 plt.show()
 
 print("--- Program execution done --- time since start [s]",
-     (time.time() - start_time))
+      (time.time() - start_time))

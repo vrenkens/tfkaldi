@@ -20,10 +20,10 @@ class LasModel(NnetGraph):
         self.mel_feature_no = mel_feature_no
         self.batch_size = batch_size
         self.target_label_no = target_label_no
-        self.listen_output_dim = 64
+        self.listen_output_dim = 40
 
         ###LISTENTER
-        self.listener = Listener(lstm_dim=42, plstm_layer_no=3,
+        self.listener = Listener(lstm_dim=24, plstm_layer_no=3,
                                  output_dim=self.listen_output_dim,
                                  out_weights_std=0.1)
 
@@ -52,8 +52,8 @@ class LasModel(NnetGraph):
                 #TODO: worry about the decoding version of the graph.
                 logits = None
 
-            #TODO: What does the saver do? Or come up with some better then
-            #cerate a saver.
+            # The saver can be used to restore the variables in the graph
+            # from file later.
             saver = tf.train.Saver()
 
         #None is returned as no control ops are defined yet.
