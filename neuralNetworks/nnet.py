@@ -187,13 +187,13 @@ class Nnet(object):
                             step = validation_step
 
                             if num_retries == int(self.conf['valid_retries']):
-                                print '''the validation loss is worse,
-                                         terminating training'''
+                                print ('the validation loss is worse, '
+                                       'terminating training')
                                 break
 
-                            print '''the validation loss is worse, returning to
-                                     the previously validated model with halved
-                                     learning rate'''
+                            print ('the validation loss is worse, returning to '
+                                   'the previously validated model with halved '
+                                   'learning rate')
 
                             num_retries += 1
 
@@ -234,14 +234,14 @@ class Nnet(object):
                                          + str(step))
 
 
-            #compute the state prior and write it to the savedir
-            prior = dispenser.compute_target_count()
-            prior = prior/prior.sum()
-
-            np.save(self.conf['savedir'] + '/prior.npy', prior)
-
             #save the final model
             trainer.save_model(self.conf['savedir'] + '/final')
+
+        #compute the state prior and write it to the savedir
+        prior = dispenser.compute_target_count()
+        prior = prior/prior.sum()
+
+        np.save(self.conf['savedir'] + '/prior.npy', prior)
 
     def decode(self, reader, writer):
         '''
@@ -253,7 +253,7 @@ class Nnet(object):
         '''
 
         #create a decoder
-        decoder = Decoder(self.dnn, self.input_dim, reader.max_length)
+        decoder = Decoder(self.dnn, self.input_dim, reader.max_input_length)
 
         #read the prior
         prior = np.load(self.conf['savedir'] + '/prior.npy')

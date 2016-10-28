@@ -136,7 +136,8 @@ class BatchDispenser(object):
              for targets in self.target_dict.values()])
 
         #count the number of occurences of each target
-        count = np.bincount(encoded_targets)
+        count = np.bincount(encoded_targets,
+                            minlength=len(self.target_coder.num_labels))
 
         return count
 

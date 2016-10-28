@@ -52,7 +52,7 @@ class TargetCoder(object):
         for target in normalized_targets.split(' '):
             encoded_targets.append(self.lookup[target])
 
-        return np.array(encoded_targets, dtype=np.uint8)
+        return np.array(encoded_targets, dtype=np.uint32)
 
     def decode(self, encoded_targets):
         '''
