@@ -1,6 +1,7 @@
 '''@file feature_reader.py
 reading features and applying cmvn and splicing them'''
 
+from copy import copy
 import ark
 import numpy as np
 import readfiles
@@ -9,15 +10,15 @@ class FeatureReader(object):
     '''Class that can read features from a Kaldi archive and process
     them (cmvn and splicing)'''
 
-    def __init__(self, scpfile, cmvnfile, utt2spkfile,
+    def __init__(self, scp_path, cmvn_path, utt2spk_path,
                  context_width, max_input_length):
         '''
         create a FeatureReader object
 
         Args:
-            scpfile: path to the features .scp file
-            cmvnfile: path to the cmvn file
-            utt2spkfile:path to the file containing the mapping from utterance
+            scp_path: path to the features .scp file
+            cmvn_path: path to the cmvn file
+            utt2spk_path:path to the file containing the mapping from utterance
                 ID to speaker ID
             context_width: context width for splicing the features
             max_input_length: the maximum length of all the utterances in the
@@ -25,13 +26,13 @@ class FeatureReader(object):
         '''
 
         #create the feature reader
-        self.reader = ark.ArkReader(scpfile)
+        self.reader = ark.ArkReader(scp_path)
 
         #create a reader for the cmvn statistics
-        self.reader_cmvn = ark.ArkReader(cmvnfile)
+        self.reader_cmvn = ark.ArkReader(cmvn_path)
 
         #save the utterance to speaker mapping
-        self.utt2spk = readfiles.read_utt2spk(utt2spkfile)
+        self.utt2spk = readfiles.read_utt2spk(utt2spk_path)
 
         #store the context width
         self.context_width = context_width
@@ -85,8 +86,20 @@ class FeatureReader(object):
 
     def split(self):
         '''split of the features that have been read so far'''
-
         self.reader.split()
+
+    def split_utt(self, num_utt):
+        '''Remove num_utt utterances from the feature reader and
+            place them in a new reader object.'''
+        new_feature_reader = copy(self)
+        new_feature_reader.reader = self.reader.split_utt(num_utt)
+        return new_feature_reader
+
+    def get_utt_no(self):
+        '''Return the total number of utterances, which could possible be
+        loaded from the associated data file. '''
+        return len(self.reader.scp_data)
+
 
 def apply_cmvn(utt, stats):
     '''

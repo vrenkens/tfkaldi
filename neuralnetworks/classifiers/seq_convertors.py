@@ -1,16 +1,16 @@
-'''@file seq_convertors.py
+"""@file seq_convertors.py
 this file contains functions that convert sequential data to non-sequential data
 and the other way around. Sequential data is defined to be data that is suetable
 as RNN input. This means that the data is a list containing an N x F tensor for
 each time step where N is the batch size and F is the input dimension non
 sequential data is data suetable for input to fully connected layers. This means
 that the data is a TxF tensor where T is the sum of all sequence lengths. This
-functionality only works for q specified batch size'''
+functionality only works for q specified batch size"""
 
 import tensorflow as tf
 
 def seq2nonseq(tensorlist, seq_length, name=None):
-    '''
+    """
     Convert sequential data to non sequential data
 
     Args:
@@ -23,7 +23,7 @@ def seq2nonseq(tensorlist, seq_length, name=None):
     Returns:
         non sequential data, which is a TxF tensor where T is the sum of all
         sequence lengths
-    '''
+    """
 
     with tf.name_scope(name or 'seq2nonseq'):
         #convert the list for each time step to a list for each sequence
@@ -39,7 +39,7 @@ def seq2nonseq(tensorlist, seq_length, name=None):
     return tensor
 
 def nonseq2seq(tensor, seq_length, length, name=None):
-    '''
+    """
     Convert non sequential data to sequential data
 
     Args:
@@ -53,7 +53,7 @@ def nonseq2seq(tensor, seq_length, length, name=None):
         sequential data, wich is a list containing an N x F
         tensor for each time step where N is the batch size and F is the
         input dimension
-    '''
+    """
 
     with tf.name_scope(name or'nonseq2seq'):
         #get the cumulated sequence lengths to specify the positions in tensor

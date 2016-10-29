@@ -7,7 +7,7 @@ import numpy as np
 from classifiers import seq_convertors
 
 class Trainer(object):
-    '''General class for the training environment for a neural net graph'''
+    '''General class outlining the training environment of a classifier.'''
     __metaclass__ = ABCMeta
 
     def __init__(self, classifier, input_dim, max_input_length,
@@ -393,7 +393,7 @@ class Trainer(object):
             output_seq_length
             + ((len(output_seq_length)%self.numutterances_per_minibatch))*[0])
 
-        #pad all the inputs qnd tqrgets to the max_length and put them in
+        #pad all the inputs and targets to the max_length and put them in
         #one array
         padded_inputs = np.array([np.append(
             i, np.zeros([self.max_input_length-i.shape[0], i.shape[1]]), 0)

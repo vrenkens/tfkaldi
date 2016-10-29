@@ -73,48 +73,31 @@ class TargetCoder(object):
     @property
     def num_labels(self):
         '''the number of possible labels'''
-
         return len(self.lookup)
 
 class TextCoder(TargetCoder):
     '''a coder for text'''
 
     def create_alphabet(self):
-        '''create the alphabet of characters'''
+        '''create the alphabet of characters. Choose ascii elements only, as
+           the <eos>, <sos>, <space>, <apostrohpe> stuff makes, things hard to
+           read.
+           see: Chan et el - 2015 Listen Attend and Spell.'''
 
         alphabet = []
-
-        # end of sentence token
-        alphabet.append('<eos>')
-
-        #start of sentence token
-        alphabet.append('<sos>')
-
-        #space
-        alphabet.append('<space>')
-
-        #comma
+        alphabet.append('>') # end of sentence token
+        alphabet.append('<') # start of sentence token
+        alphabet.append(' ')
         alphabet.append(',')
-
-        #period
         alphabet.append('.')
-
-        #apostrophy
         alphabet.append('\'')
-
-        #hyphen
         alphabet.append('-')
-
-        #question mark
         alphabet.append('?')
-
-        #unknown character
-        alphabet.append('<unk>')
+        alphabet.append('*') # unknown token.
 
         #letters in the alphabet
         for letter in range(ord('a'), ord('z')+1):
             alphabet.append(chr(letter))
-
         return alphabet
 
 class AlignmentCoder(TargetCoder):
@@ -140,3 +123,7 @@ class AlignmentCoder(TargetCoder):
         alphabet = [str(target) for target in range(self.num_targets)]
 
         return alphabet
+
+#TODO port from las.
+class PhonemeCoder(TargetCoder):
+    """ Encode phonemes as described in ...."""
