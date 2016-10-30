@@ -1,11 +1,11 @@
 '''@file dnn.py
 The DNN neural network classifier'''
 
-import seq_convertors
 import tensorflow as tf
-from classifier import Classifier
-from layer import FFLayer
-from activation import TfActivation
+from neuralnetworks.classifiers.classifier import Classifier
+import neuralnetworks.classifiers.seq_convertors as seq_convertors
+from neuralnetworks.classifiers.layer import FFLayer
+from neuralnetworks.classifiers.activation import TfActivation
 
 class DNN(Classifier):
     '''This class is a graph for feedforward fully connected neural nets.'''
@@ -65,7 +65,7 @@ class DNN(Classifier):
 
             #output layer
             outlayer = FFLayer(self.output_dim,
-                               TfActivation(None, lambda(x): x), 0)
+                               TfActivation(None, lambda x: x), 0)
 
             #do the forward computation
 

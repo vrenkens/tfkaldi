@@ -6,10 +6,10 @@ import os
 import itertools
 import numpy as np
 import tensorflow as tf
-import classifiers.activation
-from classifiers.dnn import DNN
-from trainer import CrossEnthropyTrainer
-from decoder import Decoder
+import neuralnetworks.classifiers.activation as activation
+from neuralnetworks.classifiers.dnn import DNN
+from neuralnetworks.trainer import CrossEnthropyTrainer
+from neuralnetworks.decoder import Decoder
 
 class Nnet(object):
     '''a class for a neural network that can be used together with Kaldi'''
@@ -40,41 +40,40 @@ class Nnet(object):
         self.input_dim = input_dim * (2*int(self.conf['context_width']) + 1)
 
         if self.conf['batch_norm'] == 'True':
-            activation = classifiers.activation.Batchnorm(None)
+            activation_fun = activation.Batchnorm(None)
         else:
-            activation = None
+            activation_fun = None
 
-        #create the activation function
+        # attempted to fix python 3 crash:
+        # "local variable 'activation' referenced before assignment"
+        # by renaming activation to activation_fun.
+        # create the activation function
         if self.conf['nonlin'] == 'relu':
-            activation = classifiers.activation.TfActivation(activation,
-                                                             tf.nn.relu)
+            activation_fun = activation.TfActivation(activation, tf.nn.relu)
 
         elif self.conf['nonlin'] == 'sigmoid':
-            activation = classifiers.activation.TfActivation(activation,
-                                                             tf.nn.sigmoid)
+            activation_fun = activation.TfActivation(activation, tf.nn.sigmoid)
 
         elif self.conf['nonlin'] == 'tanh':
-            activation = classifiers.activation.TfActivation(activation,
-                                                             tf.nn.tanh)
+            activation_fun = activation.TfActivation(activation, tf.nn.tanh)
 
         elif self.conf['nonlin'] == 'linear':
-            activation = classifiers.activation.TfActivation(activation,
-                                                             lambda(x): x)
+            activation_fun = activation.TfActivation(activation, lambda x: x)
 
         else:
             raise Exception('unkown nonlinearity')
 
         if self.conf['l2_norm'] == 'True':
-            activation = classifiers.activation.L2Norm(activation)
+            activation_fun = activation.L2Norm(activation)
 
         if float(self.conf['dropout']) < 1:
-            activation = classifiers.activation.Dropout(
-                activation, float(self.conf['dropout']))
+            activation_fun = activation.Dropout(
+                activation_fun, float(self.conf['dropout']))
 
         #create a DNN
         self.dnn = DNN(
             num_labels, int(self.conf['num_hidden_layers']),
-            int(self.conf['num_hidden_units']), activation,
+            int(self.conf['num_hidden_units']), activation_fun,
             int(self.conf['add_layer_period']) > 0)
 
     def train(self, dispenser):
@@ -143,7 +142,7 @@ class Nnet(object):
             #do a validation step
             if val_data is not None:
                 validation_loss = trainer.evaluate(val_data, val_labels)
-                print 'validation loss at step %d: %f' % (step, validation_loss)
+                print('validation loss at step %d: %f' % (step, validation_loss))
                 validation_step = step
                 trainer.save_trainer(self.conf['savedir']
                                      + '/training/validated')
@@ -159,7 +158,7 @@ class Nnet(object):
                 loss = trainer.update(batch_data, batch_labels)
 
                 #print the progress
-                print 'step %d/%d loss: %f' %(step, num_steps, loss)
+                print('step %d/%d loss: %f' %(step, num_steps, loss))
 
                 #increment the step
                 step += 1
@@ -169,7 +168,8 @@ class Nnet(object):
                         and val_data is not None):
 
                     current_loss = trainer.evaluate(val_data, val_labels)
-                    print 'validation loss at step %d: %f' %(step, current_loss)
+                    print('validation loss at step %d: %f' %(step,
+                                                             current_loss))
 
                     if self.conf['valid_adapt'] == 'True':
                         #if the loss increased, half the learning rate and go
@@ -187,13 +187,13 @@ class Nnet(object):
                             step = validation_step
 
                             if num_retries == int(self.conf['valid_retries']):
-                                print ('the validation loss is worse, '
-                                       'terminating training')
+                                print('the validation loss is worse, '
+                                      'terminating training')
                                 break
 
-                            print ('the validation loss is worse, returning to '
-                                   'the previously validated model with halved '
-                                   'learning rate')
+                            print('the validation loss is worse, returning to '
+                                  'the previously validated model with halved '
+                                  'learning rate')
 
                             num_retries += 1
 
@@ -212,17 +212,17 @@ class Nnet(object):
                             and (step/int(self.conf['add_layer_period'])
                                  < int(self.conf['num_hidden_layers']))):
 
-                        print 'adding layer, the model now holds %d/%d layers'%(
+                        print('adding layer, the model now holds %d/%d layers'%(
                             step/int(self.conf['add_layer_period']) + 1,
-                            int(self.conf['num_hidden_layers']))
+                            int(self.conf['num_hidden_layers'])))
 
                         trainer.control_ops['add'].run()
                         trainer.control_ops['init'].run()
 
                         #do a validation step
                         validation_loss = trainer.evaluate(val_data, val_labels)
-                        print 'validation loss at step %d: %f' % (
-                            step, validation_loss)
+                        print('validation loss at step %d: %f' % (
+                            step, validation_loss))
                         validation_step = step
                         trainer.save_trainer(self.conf['savedir']
                                              + '/training/validated')

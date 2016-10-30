@@ -6,9 +6,9 @@ from shutil import copyfile
 from random import shuffle
 import numpy as np
 import scipy.io.wavfile as wav
-import feat
-import readfiles
-import ark
+import processing.feat as feat
+import processing.readfiles as readfiles
+import processing.ark as ark
 
 def prepare_data(datadir, featdir, conf, feat_type, dynamic):
     '''
@@ -32,8 +32,8 @@ def prepare_data(datadir, featdir, conf, feat_type, dynamic):
         segments = readfiles.read_segments(datadir + '/segments')
         found_segments = True
     else:
-        print '''WARNING: no segments file found, assuming each wav file is
-            seperate utterance'''
+        print('''WARNING: no segments file found, assuming each wav file is
+            seperate utterance''')
         found_segments = False
 
     #create ark writer

@@ -1,6 +1,7 @@
 '''@file target_normalizers.py
 Contains functions for target normalization, this is database and task dependent
 '''
+from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 def aurora4_normalizer(transcription, alphabet):
     '''
@@ -55,4 +56,57 @@ def aurora4_normalizer(transcription, alphabet):
     normalized = [character if character in alphabet else '<unk>'
                   for character in normalized]
 
-    return ' '.join(normalized)
+    return normalized
+
+def aurora4_char_norm(transcription, alphabet):
+    '''
+    normalizer for Aurora 4 training transcriptions
+
+    Args:
+        transcription: the input transcription
+        alphabet: the known characters alphabet
+
+    Returns:
+        the normalized transcription
+    '''
+
+    #create a dictionary of words that should be replaced
+    replacements = {
+        ',COMMA':',',
+        '\"DOUBLE-QUOTE':'\"',
+        '!EXCLAMATION-POINT':'!',
+        '&AMPERSAND':'&',
+        '\'SINGLE-QUOTE':'\'',
+        '(LEFT-PAREN':'(',
+        ')RIGHT-PAREN':')',
+        '-DASH':'-',
+        '-HYPHEN':'-',
+        '...ELLIPSIS':'...',
+        '.PERIOD':'.',
+        '/SLASH':'/',
+        ':COLON':':',
+        ';SEMI-COLON':';',
+        '<NOISE>': '',
+        '?QUESTION-MARK': '?',
+        '{LEFT-BRACE': '{',
+        '}RIGHT-BRACE': '}'
+        }
+
+    #replace the words in the transcription
+    normalized = []
+    for word in transcription.split(' '):
+        if word in replacements:
+            normalized.append(replacements[word])
+        else:
+            normalized.append(word.lower())
+
+    #add the beginning and ending of sequence tokens
+    normalized = ['<'] + normalized + ['>']
+
+    #to string
+    normalized_string = ' '.join(normalized)
+
+    #replace unknown characters with <*>
+    normalized = [character if character in alphabet else '*'
+                  for character in normalized_string]
+    return normalized

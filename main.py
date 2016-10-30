@@ -1,42 +1,46 @@
 '''@file main.py
 run this file to go through the neural net training procedure, look at the config files in the config directory to modify the settings'''
 
+from __future__ import print_function
+
 import os
 from six.moves import configparser
-from neuralNetworks import nnet
-from processing import ark, prepare_data, feature_reader, batchdispenser, target_coder
+from neuralnetworks import nnet
+from processing import ark, prepare_data, feature_reader, batch_dispenser, target_coder
 from kaldi import gmm
+from IPython.core.debugger import Tracer; debug_here = Tracer()
+
 
 #here you can set which steps should be executed. If a step has been executed in the past the result have been saved and the step does not have to be executed again (if nothing has changed)
 GMMTRAINFEATURES = False     #required
-GMMTESTFEATURES = False         #required if the performance of a GMM is tested
-DNNTRAINFEATURES = False     #required
-DNNTESTFEATURES = False         #required if the performance of the DNN is tested
-TRAIN_MONO = False             #required
-ALIGN_MONO = False            #required
-TEST_MONO = False             #required if the performance of the monphone GMM is tested
-TRAIN_TRI = False            #required if the triphone or LDA GMM is used for alignments
-ALIGN_TRI = False            #required if the triphone or LDA GMM is used for alignments
+GMMTESTFEATURES = False     #required if the performance of a GMM is tested
+DNNTRAINFEATURES = False    #required
+DNNTESTFEATURES = False     #required if the performance of the DNN is tested
+TRAIN_MONO = False          #required
+ALIGN_MONO = False         #required
+TEST_MONO = False           #required if the performance of the monphone GMM is tested
+TRAIN_TRI = False           #required if the triphone or LDA GMM is used for alignments
+ALIGN_TRI = False           #required if the triphone or LDA GMM is used for alignments
 TEST_TRI = False            #required if the performance of the triphone GMM is tested
-TRAIN_LDA = False            #required if the LDA GMM is used for alignments
-ALIGN_LDA = False            #required if the LDA GMM is used for alignments
+TRAIN_LDA = False           #required if the LDA GMM is used for alignments
+ALIGN_LDA = False           #required if the LDA GMM is used for alignments
 TEST_LDA = False            #required if the performance of the LDA GMM is tested
 TRAIN_NNET = True            #required
 TEST_NNET = True            #required if the performance of the DNN is tested
 
 #read config file
 config = configparser.ConfigParser()
-config.read('config/config_AURORA4.cfg')
+config.read('config/config_AURORA4_mo.cfg')
 current_dir = os.getcwd()
 
 #compute the features of the training set for GMM training
 if GMMTRAINFEATURES:
     feat_cfg = dict(config.items('gmm-features'))
 
-    print '------- computing GMM training features ----------'
+    print('------- computing GMM training features ----------')
     prepare_data.prepare_data(config.get('directories', 'train_data'), config.get('directories', 'train_features') + '/' + feat_cfg['name'], feat_cfg, feat_cfg['type'], feat_cfg['dynamic'])
 
-    print '------- computing cmvn stats ----------'
+    print('------- computing cmvn stats ----------')
     prepare_data.compute_cmvn(config.get('directories', 'train_features') + '/' + feat_cfg['name'])
 
 #compute the features of the training set for DNN training if they are different then the GMM features
@@ -44,10 +48,10 @@ if DNNTRAINFEATURES:
     if config.get('dnn-features', 'name') != config.get('gmm-features', 'name'):
         feat_cfg = dict(config.items('dnn-features'))
 
-        print '------- computing DNN training features ----------'
+        print('------- computing DNN training features ----------')
         prepare_data.prepare_data(config.get('directories', 'train_data'), config.get('directories', 'train_features') + '/' + feat_cfg['name'], feat_cfg, feat_cfg['type'], feat_cfg['dynamic'])
 
-        print '------- computing cmvn stats ----------'
+        print('------- computing cmvn stats ----------')
         prepare_data.compute_cmvn(config.get('directories', 'train_features') + '/' + feat_cfg['name'])
 
 
@@ -55,10 +59,10 @@ if DNNTRAINFEATURES:
 if GMMTESTFEATURES:
     feat_cfg = dict(config.items('gmm-features'))
 
-    print '------- computing GMM testing features ----------'
+    print('------- computing GMM testing features ----------')
     prepare_data.prepare_data(config.get('directories', 'test_data'), config.get('directories', 'test_features') + '/' + feat_cfg['name'], feat_cfg, feat_cfg['type'], feat_cfg['dynamic'])
 
-    print '------- computing cmvn stats ----------'
+    print('------- computing cmvn stats ----------')
     prepare_data.compute_cmvn(config.get('directories', 'test_features') + '/' + feat_cfg['name'])
 
 #compute the features of the training set for DNN testing if they are different then the GMM features
@@ -66,10 +70,10 @@ if DNNTESTFEATURES:
     if config.get('dnn-features', 'name') != config.get('gmm-features', 'name'):
         feat_cfg = dict(config.items('dnn-features'))
 
-        print '------- computing DNN testing features ----------'
+        print('------- computing DNN testing features ----------')
         prepare_data.prepare_data(config.get('directories', 'test_data'), config.get('directories', 'test_features') + '/' + feat_cfg['name'], feat_cfg, feat_cfg['type'], feat_cfg['dynamic'])
 
-        print '------- computing cmvn stats ----------'
+        print('------- computing cmvn stats ----------')
         prepare_data.compute_cmvn(config.get('directories', 'test_features') + '/' + feat_cfg['name'])
 
 
@@ -132,7 +136,7 @@ if TRAIN_NNET:
     #only shuffle if we start with initialisation
     if config.get('nnet', 'starting_step') == '0':
         #shuffle the examples on disk
-        print '------- shuffling examples ----------'
+        print('------- shuffling examples ----------')
         prepare_data.shuffle_examples(config.get('directories', 'train_features') + '/' +  config.get('dnn-features', 'name'))
 
     #put all the alignments in one file
@@ -149,17 +153,17 @@ if TRAIN_NNET:
     #create a target coder
     coder = target_coder.AlignmentCoder(lambda x, y: x, num_labels)
 
-    dispenser = batchdispenser.AlignmentBatchDispenser(featreader, coder, int(config.get('nnet', 'batch_size')), alifile)
+    dispenser = batch_dispenser.AlignmentBatchDispenser(featreader, coder, int(config.get('nnet', 'batch_size')), alifile)
 
     #train the neural net
-    print '------- training neural net ----------'
+    print('------- training neural net ----------')
     nnet.train(dispenser)
 
 
 if TEST_NNET:
 
     #use the neural net to calculate posteriors for the testing set
-    print '------- computing state pseudo-likelihoods ----------'
+    print('------- computing state pseudo-likelihoods ----------')
     savedir = config.get('directories', 'expdir') + '/' + config.get('nnet', 'name')
     decodedir = savedir + '/decode'
     if not os.path.isdir(decodedir):
@@ -180,7 +184,7 @@ if TEST_NNET:
     #decode with te neural net
     nnet.decode(featreader, writer)
 
-    print '------- decoding testing sets ----------'
+    print('------- decoding testing sets ----------')
     #copy the gmm model and some files to speaker mapping to the decoding dir
     os.system('cp %s %s' %(config.get('directories', 'expdir') + '/' + config.get('nnet', 'gmm_name') + '/final.mdl', decodedir))
     os.system('cp -r %s %s' %(config.get('directories', 'expdir') + '/' + config.get('nnet', 'gmm_name') + '/graph', decodedir))

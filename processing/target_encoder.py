@@ -51,8 +51,11 @@ class TargetCoder(object):
                                                     self.lookup.keys())
 
         encoded_targets = []
-        for target in normalized_targets:
+
+        debug_here()
+        for target in normalized_targets.split(' '):
             encoded_targets.append(self.lookup[target])
+
         return np.array(encoded_targets, dtype=np.uint32)
 
     def decode(self, encoded_targets):
@@ -66,12 +69,10 @@ class TargetCoder(object):
             A string containing the decoded target sequence
         '''
 
-        targets = []
-        reverse_dict = {code: char for char, code in self.lookup.items()}
-        for char in encoded_targets:
-            targets.append(reverse_dict[int(char)])
+        targets = [self.lookup.keys()[encoded_target]
+                   for encoded_target in encoded_targets]
 
-        return ''.join(targets)
+        return ' '.join(targets)
 
     @property
     def num_labels(self):

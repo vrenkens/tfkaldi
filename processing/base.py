@@ -30,7 +30,7 @@ Author: James Lyons 2012
 '''
 
 import numpy
-import sigproc
+import processing.sigproc as sigproc
 from scipy.fftpack import dct
 from scipy.ndimage import convolve1d
 
@@ -214,11 +214,11 @@ def get_filterbanks(nfilt=20, nfft=512, samplerate=16000, lowfreq=0,
     #  from Hz to fft bin number
     bins = numpy.floor((nfft+1)*mel2hz(melpoints)/samplerate)
 
-    fbanks = numpy.zeros([nfilt, nfft/2+1])
-    for j in xrange(0, nfilt):
-        for i in xrange(int(bins[j]), int(bins[j+1])):
+    fbanks = numpy.zeros([nfilt, int(nfft/2+1)])
+    for j in range(0, nfilt):
+        for i in range(int(bins[j]), int(bins[j+1])):
             fbanks[j, i] = (i - bins[j])/(bins[j+1]-bins[j])
-        for i in xrange(int(bins[j+1]), int(bins[j+2])):
+        for i in range(int(bins[j+1]), int(bins[j+2])):
             fbanks[j, i] = (bins[j+2]-i)/(bins[j+2]-bins[j+1])
     return fbanks
 

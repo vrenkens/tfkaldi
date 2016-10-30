@@ -2,9 +2,9 @@
 reading features and applying cmvn and splicing them'''
 
 from copy import copy
-import ark
 import numpy as np
-import readfiles
+import processing.ark as ark
+import processing.readfiles as readfiles
 
 class FeatureReader(object):
     '''Class that can read features from a Kaldi archive and process
@@ -38,6 +38,8 @@ class FeatureReader(object):
         self.context_width = context_width
 
         #store the max length
+        #TODO: Question for vincent, why is this here? The object does not
+        #      use this member variable.
         self.max_input_length = max_input_length
 
     def get_utt(self):
@@ -55,8 +57,9 @@ class FeatureReader(object):
         cmvn_stats = self.reader_cmvn.read_utt(self.utt2spk[utt_id])
         utt_mat = apply_cmvn(utt_mat, cmvn_stats)
 
-        #splice the utterance
-        utt_mat = splice(utt_mat, self.context_width)
+        if self.context_width is not 0:
+            #splice the utterance
+            utt_mat = splice(utt_mat, self.context_width)
 
         return utt_id, utt_mat, looped
 

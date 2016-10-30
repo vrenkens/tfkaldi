@@ -1,15 +1,19 @@
+'''
+This module implements a listen attend and spell classifier.
+'''
+
 import sys
 import tensorflow as tf
 
 # we are currenly in neuralnetworks, add it to the path.
 sys.path.append("neuralnetworks")
-from nnet_graph import NnetGraph
-from nnet_las_elements import Listener
-from nnet_las_elements import AttendAndSpellCell
+from classifiers.classifier import Classifier
+from las_elements import Listener
+from neuralnetworks.las_elements import AttendAndSpellCell
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 
-class LasModel(NnetGraph):
+class LasModel(Classifier):
     """ A neural end to end network based speech model."""
 
     def __init__(self, max_time_steps, mel_feature_no, batch_size,
@@ -31,7 +35,8 @@ class LasModel(NnetGraph):
         print('creating attend and spell functions...')
         self.attend_and_spell_cell = AttendAndSpellCell(las_model=self)
 
-    def __call__(self, inputs, is_training=False, reuse=True, scope=None):
+    def __call__(self, inputs, seq_length, is_training=False, reuse=True,
+                 scope=None):
 
         input_list, seq_lengths, training_inputs = inputs
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):

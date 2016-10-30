@@ -1,8 +1,8 @@
 '''@file feat.py
 Contains the class for feature computation'''
 
-import base
 import numpy as np
+import processing.base as base
 
 class FeatureComputer(object):
     '''A featurecomputer is used to compute a certain type of features'''

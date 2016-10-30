@@ -7,6 +7,8 @@
 from abc import ABCMeta, abstractmethod
 import gzip
 import numpy as np
+from IPython.core.debugger import Tracer; debug_here = Tracer()
+
 
 ## Class that dispenses batches of data for mini-batch training
 class BatchDispenser(object):
@@ -83,7 +85,7 @@ class BatchDispenser(object):
                 batch_inputs.append(utt_mat)
                 batch_targets.append(encoded_targets)
             else:
-                print 'WARNING no targets for %s' % utt_id
+                print('WARNING no targets for %s' % utt_id)
 
         return batch_inputs, batch_targets
 
@@ -96,6 +98,15 @@ class BatchDispenser(object):
         the rest
         '''
         self.feature_reader.split()
+
+
+    def split_reader(self, utt_no):
+        """
+        Remove a number of utterances from the feature reader in this
+        batch dispenser and return a feature reader with utt_no
+        utterances.
+        """
+        return self.feature_reader.split_utt(utt_no)
 
     def skip_batch(self):
         '''skip a batch'''
@@ -145,7 +156,6 @@ class BatchDispenser(object):
     def num_batches(self):
         '''
         The number of batches in the given data.
-
         The number of batches is not necessarily a whole number
         '''
 
@@ -214,7 +224,7 @@ class AlignmentBatchDispenser(BatchDispenser):
 
         with gzip.open(target_path, 'rb') as fid:
             for line in fid:
-                splitline = line.strip().split(' ')
+                splitline = line.decode('utf-8').strip().split(' ')
                 target_dict[splitline[0]] = ' '.join(splitline[1:])
 
         return target_dict

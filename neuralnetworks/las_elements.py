@@ -10,11 +10,10 @@ from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops.rnn_cell import RNNCell
 
 # we are currenly in neuralnetworks, add it to the path.
-sys.path.append("neuralnetworks")
-from nnet_layer import BlstmLayer
-from nnet_layer import FFLayer
-from nnet_activations import TfWrapper
-from nnet_activations import IdentityWrapper
+from neuralnetworks.classifiers.layer import FFLayer
+from neuralnetworks.classifiers.layer import BLSTMLayer
+from neuralnetworks.classifiers.activation import TfActivation
+from neuralnetworks.classifiers.activation import IdentityWrapper
 
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
@@ -35,11 +34,11 @@ class Listener(object):
 
         #the listener foundation is a classical bidirectional Long Short
         #term memory layer.
-        self.blstm_layer = BlstmLayer(lstm_dim, pyramidal=False)
+        self.blstm_layer = BLSTMLayer(lstm_dim, pyramidal=False)
         #on top of are three pyramidal BLSTM layers.
         self.plstms = []
         for _ in range(plstm_layer_no):
-            self.plstms.append(BlstmLayer(lstm_dim, pyramidal=True))
+            self.plstms.append(BLSTMLayer(lstm_dim, pyramidal=True))
 
         identity_activation = IdentityWrapper()
         self.output_layer = FFLayer(output_dim, identity_activation,
@@ -132,7 +131,7 @@ class AttendAndSpellCell(RNNCell):
         # TODO: Move outside the cell
         # Feed-forward layer custom parameters. Vincent knows more about these.
         activation = None
-        activation = TfWrapper(activation, tf.nn.relu)
+        activation = TfActivation(activation, tf.nn.relu)
 
         state_net_dimension = FFNetDimension(self.dec_state_size,
                                              self.feedforward_hidden_units,

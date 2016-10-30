@@ -3,7 +3,7 @@ neural network decoder environment'''
 
 import tensorflow as tf
 import numpy as np
-from classifiers import seq_convertors
+from neuralnetworks.classifiers import seq_convertors
 
 class Decoder(object):
     '''Class for the decoding environment for a neural net classifier'''

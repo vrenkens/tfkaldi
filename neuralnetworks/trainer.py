@@ -4,7 +4,7 @@ neural network trainer environment'''
 from abc import ABCMeta, abstractmethod
 import tensorflow as tf
 import numpy as np
-from classifiers import seq_convertors
+import neuralnetworks.classifiers.seq_convertors as seq_convertors
 
 class Trainer(object):
     '''General class outlining the training environment of a classifier.'''
@@ -308,9 +308,10 @@ class Trainer(object):
 
         #feed in the batches one by one and accumulate the gradients and loss
         for k in range(len(added_inputs)/self.numutterances_per_minibatch):
-            batch_inputs = padded_inputs[:, k*self.numutterances_per_minibatch:
-                                         (k+1)*self.numutterances_per_minibatch,
-                                         :]
+            batch_inputs = \
+                padded_inputs[:, k*self.numutterances_per_minibatch\
+                                 :(k+1)*self.numutterances_per_minibatch,
+                              :]
 
             batch_targets = padded_targets[
                 :, k*self.numutterances_per_minibatch:

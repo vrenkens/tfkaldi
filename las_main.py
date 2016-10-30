@@ -6,10 +6,6 @@
 # fix the pylint import problem.
 # pylint: disable=E0401
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 import datetime
 import pickle
@@ -17,11 +13,12 @@ import socket
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
-from prepare.batch_dispenser import PhonemeTextDispenser
-from prepare.batch_dispenser import UttTextDispenser
-from prepare.feature_reader import FeatureReader
-from neuralnetworks.nnet_las_model import LasModel
-from neuralnetworks.nnet_las_trainer import LasTrainer
+from processing.batch_dispenser import TextBatchDispenser
+from processing.target_normalizers import aurora4_char_norm
+from processing.target_coder import TextEncoder
+from processing.feature_reader import FeatureReader
+from neuralnetworks.classifiers.las_model import LasModel
+from neuralnetworks.trainer import CrossEnthropyTrainer
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 start_time = time.time()
@@ -33,22 +30,28 @@ def generate_dispenser(data_path, set_kind, label_no, batch_size, phonemes):
     cmvn_path = data_path + set_kind + "/" + "cmvn.scp"
     utt2spk_path = data_path + set_kind + "/" + "utt2spk"
     text_path = data_path + set_kind + "/" + "text"
-    feature_reader = FeatureReader(feature_path, cmvn_path, utt2spk_path)
-
+    feature_reader = FeatureReader(feature_path, cmvn_path, utt2spk_path,
+                                   0, max_time_steps)
     if phonemes is True:
-        dispenser = PhonemeTextDispenser(feature_reader, batch_size,
-                                         text_path, label_no,
-                                         max_time_steps, one_hot_encoding=True)
+      pass
+    #    dispenser = PhonemeTextDispenser(feature_reader, batch_size,
+    #                                     text_path, label_no,
+    #                                     max_time_steps,
+    #                                      one_hot_encoding=True)
     else:
-        dispenser = UttTextDispenser(feature_reader, batch_size,
-                                     text_path, label_no,
-                                     max_time_steps, one_hot_encoding=True)
+      #Create the las encoder.
+        target_coder = TextEncoder(aurora4_char_norm)
+        dispenser = TextBatchDispenser(feature_reader,
+                                       target_coder,
+                                       batch_size,
+                                       text_path)
     return dispenser
 
 
 ###Learning Parameters
 #LEARNING_RATE = 0.0008
 LEARNING_RATE = 0.0008
+LEARNING_RATE_DECAY = 1
 MOMENTUM = 0.9
 #OMEGA = 0.000 #weight regularization term.
 OMEGA = 0.001 #weight regularization term.
@@ -67,7 +70,8 @@ AURORA_LABELS = 32
 AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
-MAX_BATCH_SIZE = 64
+MAX_BATCH_SIZE = 128
+UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
 MEL_FEATURE_NO = 40
 
 train_dispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
@@ -84,8 +88,8 @@ test_dispenser.feature_reader = test_feature_reader
 
 #BATCH_COUNT = train_dispenser.get_batch_count()
 BATCH_COUNT = 5
-BATCH_COUNT_VAL = val_dispenser.get_batch_count()
-BATCH_COUNT_TEST = test_dispenser.get_batch_count()
+BATCH_COUNT_VAL = val_dispenser.num_batches
+BATCH_COUNT_TEST = test_dispenser.num_batches
 print(BATCH_COUNT, BATCH_COUNT_VAL, BATCH_COUNT_TEST)
 n_classes = AURORA_LABELS
 
@@ -93,7 +97,25 @@ test_batch = test_dispenser.get_batch()
 #create the las arcitecture
 las_model = LasModel(max_time_steps, MEL_FEATURE_NO, MAX_BATCH_SIZE,
                      AURORA_LABELS)
-las_trainer = LasTrainer(las_model, LEARNING_RATE, OMEGA)
+
+#las_trainer = LasTrainer(las_model, LEARNING_RATE, OMEGA)
+
+max_input_length = np.max([train_dispenser.max_input_length,
+                           val_dispenser.max_input_length,
+                           test_dispenser.max_input_length])
+
+max_target_length = np.max([train_dispenser.max_target_length,
+                            val_dispenser.max_target_length,
+                            test_dispenser.max_target_length])
+
+
+las_trainer = CrossEnthropyTrainer(
+    las_model, n_features, max_input_length, max_target_length,
+    LEARNING_RATE, LEARNING_RATE_DECAY, MAX_N_EPOCHS,
+    UTTERANCES_PER_MINIBATCH)
+
+
+
 
 print("--- Tree generation done. --- time since start [s]",
      (time.time() - start_time))
@@ -104,7 +126,13 @@ epoch_loss_lst = []
 epoch_loss_lst_val = []
 
 print("Graph done, starting computation.")
-with tf.Session(graph=las_trainer.graph) as session:
+
+
+#start a tensorflow session
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True #pylint: disable=E1101
+with tf.Session(graph=trainer.graph, config=config):
+    #initialise the trainer
     print('Initializing')
     las_trainer.initialize()
 
@@ -113,7 +141,8 @@ with tf.Session(graph=las_trainer.graph) as session:
     for batch in range(0, 2):
         input_batches.append(train_dispenser.get_batch())
 
-    eval_loss = las_trainer.evaluate(input_batches, session, 1)
+    debug_here()
+    eval_loss = las_trainer.evaluate(input_batches)
 
     #val_lst = [val_dispenser.get_batch()]
     #vl = las_trainer.evaluate(val_lst, session, 1)
