@@ -42,22 +42,20 @@ class Trainer(object):
 
             #create the inputs placeholder
             self.inputs = tf.placeholder(
-                tf.float32, shape=[max_input_length,
-                                   numutterances_per_minibatch, input_dim],
+                tf.float32, shape=[numutterances_per_minibatch,
+                                   max_input_length,
+                                   input_dim],
                 name='inputs')
-
-            #split the 3D input tensor in a list of batch_size*input_dim tensors
-            split_inputs = tf.unpack(self.inputs)
 
             #reference labels
             self.targets = tf.placeholder(
-                tf.int32, shape=[max_target_length,
-                                 numutterances_per_minibatch, 1],
+                tf.int32, shape=[numutterances_per_minibatch,
+                                 max_target_length,
+                                 1],
                 name='targets')
 
             #split the 3D targets tensor in a list of batch_size*input_dim
             #tensors
-            split_targets = tf.unpack(self.targets)
 
             #the length of all the input sequences
             self.input_seq_length = tf.placeholder(
@@ -71,12 +69,12 @@ class Trainer(object):
 
             #compute the training outputs of the nnetgraph
             trainlogits, logit_seq_length, self.modelsaver, self.control_ops =\
-                classifier(split_inputs, self.input_seq_length,
+                classifier(self.inputs, self.input_seq_length,
                            is_training=True, reuse=False, scope='Classifier',
                            targets=self.targets)
 
             #compute the validation output of the nnetgraph
-            logits, _, _, _ = classifier(split_inputs, self.input_seq_length,
+            logits, _, _, _ = classifier(self.inputs, self.input_seq_length,
                                          is_training=False, reuse=True,
                                          scope='Classifier',
                                          targets=self.targets)
@@ -137,7 +135,7 @@ class Trainer(object):
 
                 #compute the training loss
                 loss = self.compute_loss(
-                    split_targets, trainlogits, logit_seq_length,
+                    self.targets, trainlogits, logit_seq_length,
                     self.target_seq_length)
 
                 #operation to half the learning rate
@@ -189,7 +187,7 @@ class Trainer(object):
             with tf.name_scope('valid'):
                 #compute the validation loss
                 valid_loss = self.compute_loss(
-                    split_targets, logits, logit_seq_length,
+                    self.targets, logits, logit_seq_length,
                     self.target_seq_length)
 
                 #operation to update the validation loss
@@ -261,7 +259,7 @@ class Trainer(object):
                                                     graph=self.graph)
 
 
-    def lists_to_tensor(self, inputs, targets):
+    def padd_batch(self, inputs, targets):
         '''
         Convert data input lists to time minor batches.
 
@@ -273,7 +271,10 @@ class Trainer(object):
                 a list containing an N-dimensional vector for each utterance
 
         Returns:
-            Time minor inputs and targets.
+            Time minor inputs, and targets.
+            padded_inputs: [batch_size, max_time,
+                            feature_number]
+            padded_targets: [batch_size, max_target_length]
 
         '''
 
@@ -308,12 +309,64 @@ class Trainer(object):
             t, np.zeros(self.max_target_length-t.shape[0]), 0)
                                    for t in added_targets])
 
-        #transpose the inputs and targets so they fit in the placeholders
-        padded_inputs = padded_inputs.transpose([1, 0, 2])
-        padded_targets = padded_targets.transpose()
+        #transpose the inputs and targets so they fit time major, placeholders
+        #debug_here()
+        #padded_inputs = padded_inputs.transpose([1, 0, 2])
+        #padded_targets = padded_targets.transpose()
 
         return padded_inputs, padded_targets, input_seq_length, \
                output_seq_length, len(added_inputs)
+
+
+    def split_batch(self, k, padded_inputs, padded_targets, input_seq_length,
+                    output_seq_length):
+        """
+        Split batch data into smaller minibatches.
+
+        Args:
+            k:  Minibatch number and loop counter.
+            padded_inputs: The input feature data numpy array, containing the
+                           entire batch of size [batch_size, max_input_time,
+                           feature_no].
+            padded_targets: The target data numpy array for the full batch.
+                            Size [batch_size, max_target_length]
+            input_seq_length: The length of input sequence utterances a list
+                              of length [batch_size]
+            output_seq_length: The length of the target sequences a list of
+                               length [batch_size]
+
+        Returns:
+            batch_inputs: Minibatch input [mini_batch_size, max_input_time,
+                          feature_no]
+            batch_targets: Minibatch targets size [mini_batch_size,
+                           max_target_length]
+            batch_input_seq_length: Input sequence length list of length
+                                    [mini_batch_size]
+            batch_output_seq_length: Target sequence legnth list of length
+                                     [mini_batch_size]
+        """
+
+        batch_inputs = \
+            padded_inputs[k*self.numutterances_per_minibatch\
+                            :(k+1)*self.numutterances_per_minibatch,
+                          :, :]
+
+        batch_targets = padded_targets[
+            k*self.numutterances_per_minibatch:
+            (k+1)*self.numutterances_per_minibatch, :]
+
+        batch_input_seq_length = input_seq_length[
+            k*self.numutterances_per_minibatch:
+            (k+1)*self.numutterances_per_minibatch]
+
+        batch_output_seq_length = output_seq_length[
+            k*self.numutterances_per_minibatch:
+            (k+1)*self.numutterances_per_minibatch]
+
+        return batch_inputs, batch_targets, batch_input_seq_length, \
+               batch_output_seq_length
+
+
 
     def update(self, inputs, targets):
         '''
@@ -332,27 +385,15 @@ class Trainer(object):
 
         padded_inputs, padded_targets, input_seq_length, \
                output_seq_length, added_input_length \
-                = self.lists_to_tensor(inputs, targets)
+                = self.padd_batch(inputs, targets)
 
         #feed in the batches one by one and accumulate the gradients and loss
         loopint = int(added_input_length/self.numutterances_per_minibatch)
         for k in range(loopint):
-            batch_inputs = \
-                padded_inputs[:, k*self.numutterances_per_minibatch\
-                                 :(k+1)*self.numutterances_per_minibatch,
-                              :]
-
-            batch_targets = padded_targets[
-                :, k*self.numutterances_per_minibatch:
-                (k+1)*self.numutterances_per_minibatch]
-
-            batch_input_seq_length = input_seq_length[
-                k*self.numutterances_per_minibatch:
-                (k+1)*self.numutterances_per_minibatch]
-
-            batch_output_seq_length = output_seq_length[
-                k*self.numutterances_per_minibatch:
-                (k+1)*self.numutterances_per_minibatch]
+            batch_inputs, batch_targets, batch_input_seq_length, \
+                batch_output_seq_length = \
+            self.split_batch(k, padded_inputs, padded_targets,
+                             input_seq_length, output_seq_length)
 
             #pylint: disable=E1101
             self.update_gradients_op.run(
@@ -405,26 +446,16 @@ class Trainer(object):
 
         padded_inputs, padded_targets, input_seq_length, \
                output_seq_length, added_input_length \
-                = self.lists_to_tensor(inputs, targets)
+                = self.padd_batch(inputs, targets)
 
         #feed in the batches one by one and accumulate the gradients and loss
         loopint = int(added_input_length/self.numutterances_per_minibatch)
         for k in range(loopint):
-            batch_inputs = padded_inputs[:, k*self.numutterances_per_minibatch:
-                                         (k+1)*self.numutterances_per_minibatch,
-                                         :]
+            batch_inputs, batch_targets, batch_input_seq_length, \
+                batch_output_seq_length = \
+            self.split_batch(k, padded_inputs, padded_targets,
+                             input_seq_length, output_seq_length)
 
-            batch_targets = padded_targets[
-                :, k*self.numutterances_per_minibatch:
-                (k+1)*self.numutterances_per_minibatch]
-
-            batch_input_seq_length = input_seq_length[
-                k*self.numutterances_per_minibatch:
-                (k+1)*self.numutterances_per_minibatch]
-
-            batch_output_seq_length = output_seq_length[
-                k*self.numutterances_per_minibatch:
-                (k+1)*self.numutterances_per_minibatch]
 
             #pylint: disable=E1101
             self.update_valid_loss.run(
@@ -472,7 +503,6 @@ class Trainer(object):
         Args:
             filename: path where the model will be saved
         '''
-
         self.modelsaver.save(tf.get_default_session(), filename)
         self.saver.save(tf.get_default_session(), filename + '_trainvars')
 
@@ -483,16 +513,14 @@ class Trainer(object):
         Args:
             filename: path where the model will be saved
         '''
-
         self.modelsaver.restore(tf.get_default_session(), filename)
         self.saver.restore(tf.get_default_session(), filename + '_trainvars')
 
 
 
 class LasTrainer(Trainer):
-    '''A trainer that minimises the cross-enthropy loss, the output sequences
-    must be of the same length as the input sequences, and takes las training
-    details into account'''
+    '''A trainer that minimises the cross-enthropy loss, using sequential
+        logits and targets.'''
 
     def compute_loss(self, targets, logits, logit_seq_length,
                      target_seq_length):
@@ -517,25 +545,15 @@ class LasTrainer(Trainer):
         '''
 
         with tf.name_scope('cross_enthropy_loss'):
-
-            logit_seq_length = target_seq_length
-
-            #convert to non sequential data
-            nonseq_targets = seq_convertors.seq2nonseq(targets,
-                                                       target_seq_length)
-            nonseq_logits = seq_convertors.seq2nonseq(logits, logit_seq_length)
-
-            #make a vector out of the targets
-            nonseq_targets = tf.reshape(nonseq_targets, [-1])
-
             #one hot encode the targets
-            #pylint: disable=E1101
-            nonseq_targets = tf.one_hot(nonseq_targets,
-                                        int(nonseq_logits.get_shape()[1]))
-
+            target_shape = tf.Tensor.get_shape(targets)
+            target_matrix = tf.reshape(targets, [int(target_shape[0]),
+                                                 int(target_shape[1])])
+            targets_one_hot = tf.one_hot(target_matrix,
+                                         int(logits.get_shape()[2]))
             #compute the cross-enthropy loss
             return tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(
-                nonseq_logits, nonseq_targets))
+                logits, targets_one_hot))
 
 
 

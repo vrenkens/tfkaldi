@@ -27,7 +27,7 @@ class LasModel(Classifier):
         self.listen_output_dim = 40
 
         ###LISTENTER
-        self.listener = Listener(lstm_dim=24, plstm_layer_no=3,
+        self.listener = Listener(lstm_dim=56, plstm_layer_no=3,
                                  output_dim=self.listen_output_dim,
                                  out_weights_std=0.1)
 
@@ -38,9 +38,7 @@ class LasModel(Classifier):
     def __call__(self, inputs, seq_length, is_training=False, reuse=True,
                  scope=None, targets=None):
         #inputs = tf.cast(inputs, self.dtype)
-        targets = tf.cast(inputs, self.dtype)
-
-        #debug_here()
+        targets = tf.cast(targets, self.dtype)
 
         if is_training is True:
             assert targets is not None
@@ -58,7 +56,7 @@ class LasModel(Classifier):
             logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
                                           inputs=targets,
                                           initial_state=zero_state,
-                                          time_major=True)
+                                          time_major=False)
             #else:
                 #TODO: worry about the decoding version of the graph.
             #    logits = None

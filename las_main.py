@@ -71,7 +71,11 @@ AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
 MAX_BATCH_SIZE = 128
+#askoy
 UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
+#spchcl22
+#UTTERANCES_PER_MINIBATCH = 64 #time vs memory tradeoff.
+
 MEL_FEATURE_NO = 40
 
 train_dispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
@@ -117,11 +121,11 @@ las_trainer = LasTrainer(
 
 
 
-print("--- Tree generation done. --- time since start [s]",
-     (time.time() - start_time))
+print("--- Tree generation done. --- time since start [min]",
+     (time.time() - start_time)/60.0)
 
 ####Run session
-restarts = 0
+epoch = 0
 epoch_loss_lst = []
 epoch_loss_lst_val = []
 
@@ -139,17 +143,20 @@ with tf.Session(graph=las_trainer.graph, config=config):
     inputs, targets = train_dispenser.get_batch()
     eval_loss = las_trainer.evaluate(inputs, targets)
     epoch_loss_lst.append(eval_loss)
+    print('pre evaluation loss:', eval_loss)
 
     continue_training = True
     while continue_training:
-        epoch = len(epoch_loss_lst_val)
         print('Epoch', epoch, '...')
         input_batches = []
         inputs, targets = train_dispenser.get_batch()
         train_loss = las_trainer.update(inputs, targets)
         print('loss:', train_loss)
+        epoch = epoch + 1
 
         if epoch%10 == 0:
+            print("-----  validation Step --- time since start [min] ---",
+                  (time.time() - start_time)/60.0)
             epoch_loss_lst.append(train_loss)
 
             inputs, targets = val_dispenser.get_batch()
@@ -175,6 +182,10 @@ with tf.Session(graph=las_trainer.graph, config=config):
         #else:
         #    print("validation losses", epoch_loss_lst_val, epoch)
 
+        if epoch > MAX_N_EPOCHS:
+            continue_training = False
+            print("stopping the training.")
+
     #run the network on the test data set.
     inputs, targets = test_dispenser.get_batch()
     test_loss = las_trainer.evaluate(inputs, targets)
@@ -186,12 +197,12 @@ filename = "saved/savedValsLasAdam." \
            + str(now) \
            + ".pkl"
 pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE,
-             MOMENTUM, OMEGA], open(filename, "wb"))
+             MOMENTUM, OMEGA, epoch], open(filename, "wb"))
 print("plot values saved at: " + filename)
 
 plt.plot(np.array(epoch_loss_lst))
 plt.plot(np.array(epoch_loss_lst_val))
 plt.show()
 
-print("--- Program execution done --- time since start [s]",
-      (time.time() - start_time))
+print("--- Program execution done --- time since start [min]",
+      (time.time() - start_time)/60.0)

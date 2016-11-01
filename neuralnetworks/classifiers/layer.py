@@ -3,7 +3,9 @@ Neural network layers '''
 
 import tensorflow as tf
 from tensorflow.python.ops import rnn_cell
-from tensorflow.python.ops.rnn import bidirectional_rnn
+from tensorflow.python.ops.rnn import bidirectional_dynamic_rnn
+from IPython.core.debugger import Tracer; debug_here = Tracer()
+
 
 class FFLayer(object):
     '''This class defines a fully connected feed forward layer'''
@@ -80,15 +82,14 @@ class BLSTMLayer(object):
         self.num_units = num_units
         self.pyramidal = pyramidal
 
-    def __call__(self, inputs, sequence_length, is_training=False,
+    def __call__(self, inputs, sequence_lengths, is_training=False,
                  reuse=False, scope=None):
         """
         Create the variables and do the forward computation
         Args:
-            inputs: A length T list of inputs, each a tensor of shape
-                        [batch_size, input_size], or a nested tuple of such
-                        elements.
-            sequence_length: the length of the input sequences
+            inputs: A time minor tensor of shape [batch_size, time,
+                    input_size],
+            sequence_lengths: the length of the input sequences
             is_training: whether or not the network is in training mode
             reuse: Setting this value to true will cause tensorflow to look
                       for variables with the same name in the graph and reuse
@@ -96,7 +97,10 @@ class BLSTMLayer(object):
             scope: The variable scope sets the namespace under which
                       the variables created during this call will be stored.
         Returns:
-            the output of the layer
+            the output of the layer, the concatenated outputs of the
+            forward and backward pass shape [batch_size, time, input_size*2]
+            or [batch_size, time/2, input_size*2] if self.plstm is set to
+            true.
         """
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
@@ -107,25 +111,41 @@ class BLSTMLayer(object):
                                           use_peepholes=True)
 
             if self.pyramidal is True:
-                print(scope + ' initial length ' + str(len(inputs)))
-                print(scope + ' initial shape: ',
-                      tf.Tensor.get_shape(inputs[0]))
-                concat_inputs = []
-                for time_i in range(1, len(inputs), 2):
-                    concat_input = tf.concat(1, [inputs[time_i-1],
-                                                 inputs[time_i]])
-                    concat_inputs.append(concat_input)
-                print(scope + ' concat length ' + str(len(concat_inputs)))
-                print(scope + ' concat shape: ',
-                      tf.Tensor.get_shape(concat_inputs[0]))
-                inputs = concat_inputs
+                inputs, sequence_lengths = concat(inputs, sequence_lengths,
+                                                  scope)
 
-            #outputs, output_state_fw, output_state_bw
-            #TODO replace with bidirectional_dynamic_rnn
-            outputs, _, _ = bidirectional_rnn(lstm_cell,
-                                              lstm_cell,
-                                              inputs, dtype=tf.float32)
-                                              #sequence_length=sequence_length)
-            #using the sequence_length argument causes memory
-            #trouble sometimes.
-        return outputs
+            #outputs, output_states
+            outputs, _ = bidirectional_dynamic_rnn(
+                lstm_cell, lstm_cell, inputs, dtype=tf.float32,
+                sequence_length=sequence_lengths)
+            outputs = tf.concat(2, outputs)
+        return outputs, sequence_lengths
+
+def concat(inputs, sequence_lengths, scope):
+    """
+    Turn the blstm into a plstm by input concatinations.
+    Args:
+        inputs: A time minor tensor [batch_size, time, input_size]
+        sequence_lengths: the length of the input sequences
+        scope: the current scope
+    Returns:
+        inputs: Concatenated inputs [batch_size, time/2, input_size]
+        sequence_lengths: the lengths of the inputs sequences [batch_size]
+    """
+    inputs_lst = tf.unpack(inputs, axis=1, name='plstm_unpack')
+    print(scope + ' initial length ' + str(len(inputs_lst)))
+    print(scope + ' initial shape: ',
+          tf.Tensor.get_shape(inputs_lst[0]))
+    concat_inputs = []
+    for time_i in range(1, len(inputs_lst), 2):
+        concat_input = tf.concat(1, [inputs_lst[time_i-1],
+                                     inputs_lst[time_i]])
+        concat_inputs.append(concat_input)
+
+    print(scope + ' concat length ' + str(len(concat_inputs)))
+    print(scope + ' concat shape: ',
+          tf.Tensor.get_shape(concat_inputs[0]))
+    inputs = tf.pack(concat_inputs, axis=1, name='plstm_pack')
+    sequence_lengths = tf.cast(tf.ceil(sequence_lengths/2),
+                               tf.int32)
+    return inputs, sequence_lengths

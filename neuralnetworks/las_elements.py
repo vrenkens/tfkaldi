@@ -49,15 +49,18 @@ class Listener(object):
         """ Compute the output of the listener function. """
         #compute the base layer blstm output.
         with tf.variable_scope(type(self).__name__, reuse=self.reuse):
-            hidden_values = self.blstm_layer(input_features, sequence_lengths,
-                                             reuse=self.reuse,
-                                             scope=("blstm_layer"))
+            hidden_values, sequence_lengths = \
+                self.blstm_layer(input_features,
+                                 sequence_lengths,
+                                 reuse=self.reuse,
+                                 scope=("blstm_layer"))
             #move on to the plstm outputs.
             for counter, plstm_layer in enumerate(self.plstms):
-                hidden_values = plstm_layer(hidden_values, sequence_lengths,
-                                            reuse=self.reuse,
-                                            scope=("plstm_layer_"
-                                                   + str(counter)))
+                hidden_values, sequence_lengths = \
+                    plstm_layer(hidden_values,
+                                sequence_lengths,
+                                reuse=self.reuse,
+                                scope=("plstm_layer_" + str(counter)))
             output_values = self.linear_output_layer(hidden_values)
         if self.reuse is None:
             self.reuse = True
@@ -69,13 +72,15 @@ class Listener(object):
             Speech recognition with deep recurrent neural networks,
             Graves, A, Mohamed, A.-R., Hinton, G
         """
-        reuse = None
-        output_values = []
-        for output_value in hidden_values:
-            output_values.append(self.output_layer(
+        reuse = None or self.reuse
+        hidden_values_lst = tf.unpack(hidden_values, axis=1)
+        output_values_lst = []
+        for output_value in hidden_values_lst:
+            output_values_lst.append(self.output_layer(
                 output_value, reuse=reuse, scope=("linear_output_layer")))
             if reuse is None:
                 reuse = True
+        output_values = tf.pack(output_values_lst, axis=1)
         return output_values
 
 #create a tf style cell state tuple object to derive the actual tuple from.
@@ -116,7 +121,7 @@ class AttendAndSpellCell(RNNCell):
           one_hot_char: (y) one hot encoded input and output char.
     """
     def __init__(self, las_model, decoder_state_size=40,
-                 feedforward_hidden_units=20, feedforward_hidden_layers=3):
+                 feedforward_hidden_units=56, feedforward_hidden_layers=3):
         self.feedforward_hidden_units = feedforward_hidden_units
         self.feedforward_hidden_layers = feedforward_hidden_layers
         #the decoder state size must be equal to the RNN size.
@@ -171,7 +176,8 @@ class AttendAndSpellCell(RNNCell):
     def set_features(self, high_lvl_features):
         ''' Set the features when available, storing the features in the
             object makes the cell call simpler.'''
-        self.high_lvl_features = high_lvl_features
+        print("Feature dimension:", tf.Tensor.get_shape(high_lvl_features))
+        self.high_lvl_features = tf.unpack(high_lvl_features, axis=1)
 
 
     @property
