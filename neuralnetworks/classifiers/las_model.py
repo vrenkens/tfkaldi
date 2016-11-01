@@ -36,32 +36,38 @@ class LasModel(Classifier):
         self.attend_and_spell_cell = AttendAndSpellCell(las_model=self)
 
     def __call__(self, inputs, seq_length, is_training=False, reuse=True,
-                 scope=None):
+                 scope=None, targets=None):
+        #inputs = tf.cast(inputs, self.dtype)
+        targets = tf.cast(inputs, self.dtype)
 
-        input_list, seq_lengths, training_inputs = inputs
+        #debug_here()
+
+        if is_training is True:
+            assert targets is not None
+
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
-            high_level_features = self.listener(input_list,
-                                                seq_lengths)
+            high_level_features = self.listener(inputs,
+                                                seq_length)
             print('adding attend computations to the graph...')
-            if is_training is True:
-                #training mode
-                self.attend_and_spell_cell.set_features(high_level_features)
-                zero_state = self.attend_and_spell_cell.zero_state(
-                    self.batch_size, self.dtype)
-                logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
-                                              inputs=training_inputs,
-                                              initial_state=zero_state,
-                                              time_major=True)
-            else:
+            #if is_training is True:
+            #training mode
+            self.attend_and_spell_cell.set_features(high_level_features)
+            zero_state = self.attend_and_spell_cell.zero_state(
+                self.batch_size, self.dtype)
+            logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
+                                          inputs=targets,
+                                          initial_state=zero_state,
+                                          time_major=True)
+            #else:
                 #TODO: worry about the decoding version of the graph.
-                logits = None
+            #    logits = None
 
             # The saver can be used to restore the variables in the graph
             # from file later.
             saver = tf.train.Saver()
 
         #None is returned as no control ops are defined yet.
-        return logits, saver, None
+        return logits, None, saver, None
 
 

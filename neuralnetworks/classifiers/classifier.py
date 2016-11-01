@@ -3,6 +3,7 @@ The abstract class for a neural network classifier'''
 
 from abc import ABCMeta, abstractmethod
 
+
 class Classifier(object):
     '''This an abstract class defining a neural net classifier'''
     __metaclass__ = ABCMeta
@@ -14,7 +15,7 @@ class Classifier(object):
 
     @abstractmethod
     def __call__(self, inputs, seq_length, is_training=False, reuse=False,
-                 scope=None):
+                 scope=None, targets=None):
         '''
         Add the neural net variables and operations to the graph
 

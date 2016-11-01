@@ -85,7 +85,9 @@ class BLSTMLayer(object):
         """
         Create the variables and do the forward computation
         Args:
-            inputs: the input to the layer
+            inputs: A length T list of inputs, each a tensor of shape
+                        [batch_size, input_size], or a nested tuple of such
+                        elements.
             sequence_length: the length of the input sequences
             is_training: whether or not the network is in training mode
             reuse: Setting this value to true will cause tensorflow to look
@@ -119,6 +121,7 @@ class BLSTMLayer(object):
                 inputs = concat_inputs
 
             #outputs, output_state_fw, output_state_bw
+            #TODO replace with bidirectional_dynamic_rnn
             outputs, _, _ = bidirectional_rnn(lstm_cell,
                                               lstm_cell,
                                               inputs, dtype=tf.float32)

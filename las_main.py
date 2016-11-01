@@ -18,7 +18,7 @@ from processing.target_normalizers import aurora4_char_norm
 from processing.target_coder import TextEncoder
 from processing.feature_reader import FeatureReader
 from neuralnetworks.classifiers.las_model import LasModel
-from neuralnetworks.trainer import CrossEnthropyTrainer
+from neuralnetworks.trainer import LasTrainer
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 start_time = time.time()
@@ -95,7 +95,7 @@ n_classes = AURORA_LABELS
 
 test_batch = test_dispenser.get_batch()
 #create the las arcitecture
-las_model = LasModel(max_time_steps, MEL_FEATURE_NO, MAX_BATCH_SIZE,
+las_model = LasModel(max_time_steps, MEL_FEATURE_NO, UTTERANCES_PER_MINIBATCH,
                      AURORA_LABELS)
 
 #las_trainer = LasTrainer(las_model, LEARNING_RATE, OMEGA)
@@ -109,7 +109,7 @@ max_target_length = np.max([train_dispenser.max_target_length,
                             test_dispenser.max_target_length])
 
 
-las_trainer = CrossEnthropyTrainer(
+las_trainer = LasTrainer(
     las_model, n_features, max_input_length, max_target_length,
     LEARNING_RATE, LEARNING_RATE_DECAY, MAX_N_EPOCHS,
     UTTERANCES_PER_MINIBATCH)
@@ -126,75 +126,66 @@ epoch_loss_lst = []
 epoch_loss_lst_val = []
 
 print("Graph done, starting computation.")
-
-
 #start a tensorflow session
 config = tf.ConfigProto()
-config.gpu_options.allow_growth = True #pylint: disable=E1101
-with tf.Session(graph=trainer.graph, config=config):
+#pylint does not get the tensorflow object members right.
+#pylint: disable=E1101
+config.gpu_options.allow_growth = True
+with tf.Session(graph=las_trainer.graph, config=config):
     #initialise the trainer
     print('Initializing')
     las_trainer.initialize()
 
-    #check untrained performance.
-    input_batches = []
-    for batch in range(0, 2):
-        input_batches.append(train_dispenser.get_batch())
-
-    debug_here()
-    eval_loss = las_trainer.evaluate(input_batches)
-
-    #val_lst = [val_dispenser.get_batch()]
-    #vl = las_trainer.evaluate(val_lst, session, 1)
-    #print("untrained validation loss: ", vl)
-    #epoch_loss_lst_val.append(vl)
+    inputs, targets = train_dispenser.get_batch()
+    eval_loss = las_trainer.evaluate(inputs, targets)
+    epoch_loss_lst.append(eval_loss)
 
     continue_training = True
     while continue_training:
         epoch = len(epoch_loss_lst_val)
         print('Epoch', epoch, '...')
         input_batches = []
-        for batch in range(0, BATCH_COUNT):
-            input_batches.append(train_dispenser.get_batch())
-        trn_loss = las_trainer.update(input_batches, session)
+        inputs, targets = train_dispenser.get_batch()
+        train_loss = las_trainer.update(inputs, targets)
+        print('loss:', train_loss)
 
-        epoch_loss_lst.append(trn_loss)
-        print('loss:', trn_loss)
+        if epoch%10 == 0:
+            epoch_loss_lst.append(train_loss)
 
-        val_lst = [val_dispenser.get_batch()]
-        vl = las_trainer.evaluate(val_lst, session, epoch+1)
-        print("validation loss: ", vl)
-        epoch_loss_lst_val.append(vl)
+            inputs, targets = val_dispenser.get_batch()
+            validation_loss = las_trainer.evaluate(inputs, targets)
+            print("-----  validation loss: ", validation_loss)
+            epoch_loss_lst_val.append(validation_loss)
 
         # if the training error is lower than the validation error for
         # interval iterations stop..
-        interval = 50
-        if epoch > interval:
-            print("validation errors",
-                  epoch_loss_lst_val[(epoch - interval):epoch])
+        #interval = 50
+        #if epoch > interval:
+        #    print("validation errors",
+        #          epoch_loss_lst_val[(epoch - interval):epoch])
 
-            val_mean = np.mean(epoch_loss_lst_val[(epoch - interval):epoch])
-            train_mean = np.mean(epoch_loss_lst[(epoch - interval):epoch])
-            test_val = val_mean - train_mean - OVERFIT_TOL
-            print('Overfit condition value:', test_val,
-                  'remaining iterations: ', MAX_N_EPOCHS - epoch)
-            if (test_val > 0) or (epoch > MAX_N_EPOCHS):
-                continue_training = False
-                print("stopping the training.")
-        else:
-            print("validation losses", epoch_loss_lst_val, epoch)
+        #    val_mean = np.mean(epoch_loss_lst_val[(epoch - interval):epoch])
+        #    train_mean = np.mean(epoch_loss_lst[(epoch - interval):epoch])
+        #    test_val = val_mean - train_mean - OVERFIT_TOL
+        #    print('Overfit condition value:', test_val,
+        #          'remaining iterations: ', MAX_N_EPOCHS - epoch)
+        #    if (test_val > 0) or (epoch > MAX_N_EPOCHS):
+        #        continue_training = False
+        #        print("stopping the training.")
+        #else:
+        #    print("validation losses", epoch_loss_lst_val, epoch)
 
     #run the network on the test data set.
-    test_lst = [test_dispenser.get_batch()]
-    tl = las_trainer.evaluate(test_lst, session, epoch+1)
-    print("test loss: ", tl)
+    inputs, targets = test_dispenser.get_batch()
+    test_loss = las_trainer.evaluate(inputs, targets)
+    print("test loss: ", test_loss)
 
 now = datetime.datetime.now()
-filename = "saved/savedValsLastAdam." \
+filename = "saved/savedValsLasAdam." \
            + socket.gethostname() \
            + str(now) \
            + ".pkl"
-pickle.dump([epoch_loss_lst, epoch_loss_lst_val, tl, LEARNING_RATE,
+pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE,
              MOMENTUM, OMEGA], open(filename, "wb"))
 print("plot values saved at: " + filename)
 
