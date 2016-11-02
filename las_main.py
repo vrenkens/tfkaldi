@@ -55,10 +55,9 @@ LEARNING_RATE_DECAY = 1
 MOMENTUM = 0.9
 #OMEGA = 0.000 #weight regularization term.
 OMEGA = 0.001 #weight regularization term.
-INPUT_NOISE_STD = 0.6
 #LEARNING_RATE = 0.0001       #too low?
 #MOMENTUM = 0.6              #play with this.
-MAX_N_EPOCHS = 900
+MAX_N_EPOCHS = 600
 OVERFIT_TOL = 99999
 
 ####Network Parameters
@@ -121,15 +120,14 @@ las_trainer = LasTrainer(
 
 
 
-print("--- Tree generation done. --- time since start [min]",
-     (time.time() - start_time)/60.0)
+print('\x1b[01;32m' + "--- Graph generation done. --- time since start [min]",
+     (time.time() - start_time)/60.0, '\x1b[0m')
 
 ####Run session
 epoch = 0
 epoch_loss_lst = []
 epoch_loss_lst_val = []
 
-print("Graph done, starting computation.")
 las_trainer.start_visualization('log')
 #start a tensorflow session
 config = tf.ConfigProto()
@@ -138,13 +136,18 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 with tf.Session(graph=las_trainer.graph, config=config):
     #initialise the trainer
-    print('Initializing')
+    print("Initializing")
     las_trainer.initialize()
-
+    print("Starting computation.")
     inputs, targets = train_dispenser.get_batch()
     eval_loss = las_trainer.evaluate(inputs, targets)
     epoch_loss_lst.append(eval_loss)
-    print('pre evaluation loss:', eval_loss)
+    print("pre training loss:", eval_loss)
+
+    inputs, targets = val_dispenser.get_batch()
+    validation_loss = las_trainer.evaluate(inputs, targets)
+    epoch_loss_lst_val.append(validation_loss)
+    print('validation set pre training loss:', validation_loss)
 
     continue_training = True
     while continue_training:
@@ -156,13 +159,17 @@ with tf.Session(graph=las_trainer.graph, config=config):
         epoch = epoch + 1
 
         if epoch%5 == 0:
-            print("-----  validation Step --- time since start [min]   ",
-                  (time.time() - start_time)/60.0)
+            print('\x1b[01;32m'
+                  + "-----  validation Step --- time since start [h]   ",
+                  (time.time() - start_time)/3600.0,
+                  '\x1b[0m')
             epoch_loss_lst.append(train_loss)
 
             inputs, targets = val_dispenser.get_batch()
             validation_loss = las_trainer.evaluate(inputs, targets)
-            print("-----  validation loss: ", validation_loss)
+            print('\x1b[01;32m'
+                  + "-----  validation loss: ", validation_loss,
+                  '\x1b[0m')
             epoch_loss_lst_val.append(validation_loss)
 
         # if the training error is lower than the validation error for
@@ -185,17 +192,24 @@ with tf.Session(graph=las_trainer.graph, config=config):
 
         if epoch > MAX_N_EPOCHS:
             continue_training = False
-            print("stopping the training.")
+            print('\x1b[01;31m', "stopping the training.", '\x1b[0m')
+
+    print('saving the model')
+    today = str(datetime.datetime.now()).split(' ')[0]
+    filename = "saved_models/" \
+               + socket.gethostname() \
+               + '-' + today \
+               + ".mdl"
+    las_trainer.save_model(filename)
 
     #run the network on the test data set.
     inputs, targets = test_dispenser.get_batch()
     test_loss = las_trainer.evaluate(inputs, targets)
     print("test loss: ", test_loss)
 
-now = datetime.datetime.now()
 filename = "saved/savedValsLasAdam." \
            + socket.gethostname() \
-           + str(now) \
+           + '-' + today \
            + ".pkl"
 pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE,
              MOMENTUM, OMEGA, epoch], open(filename, "wb"))
@@ -205,5 +219,5 @@ plt.plot(np.array(epoch_loss_lst))
 plt.plot(np.array(epoch_loss_lst_val))
 plt.show()
 
-print("--- Program execution done --- time since start [min]",
-      (time.time() - start_time)/60.0)
+print("--- Program execution done --- time since start [h]",
+      (time.time() - start_time)/3600.0)

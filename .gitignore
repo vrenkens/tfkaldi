@@ -6,8 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
-#the logdir
+#the logdir and saved models directory.
 log/
+saved_models/
 
 # Distribution / packaging
 .Python

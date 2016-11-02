@@ -176,7 +176,7 @@ class AttendAndSpellCell(RNNCell):
     def set_features(self, high_lvl_features):
         ''' Set the features when available, storing the features in the
             object makes the cell call simpler.'''
-        print("Feature dimension:", tf.Tensor.get_shape(high_lvl_features))
+        print("   Feature dimension:", tf.Tensor.get_shape(high_lvl_features))
         self.high_lvl_features = tf.unpack(high_lvl_features, axis=1)
 
 
@@ -242,7 +242,7 @@ class AttendAndSpellCell(RNNCell):
             # while the zero states functions create normal dtypes.
             # without the identity op the network unrolling chrashes.
             one_hot_char = tf.identity(one_hot_char)
-            print("shape one_hot_char:", tf.Tensor.get_shape(one_hot_char))
+            print("  shape one_hot_char:", tf.Tensor.get_shape(one_hot_char))
             # The dimension of the context vector is determined by the listener
             # output dimension.
             context_vector = tf.get_variable(

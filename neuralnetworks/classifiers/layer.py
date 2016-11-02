@@ -129,23 +129,23 @@ def concat(inputs, sequence_lengths, scope):
         sequence_lengths: the length of the input sequences
         scope: the current scope
     Returns:
-        inputs: Concatenated inputs [batch_size, time/2, input_size]
+        inputs: Concatenated inputs [batch_size, time/2, input_size*2]
         sequence_lengths: the lengths of the inputs sequences [batch_size]
     """
-    inputs_lst = tf.unpack(inputs, axis=1, name='plstm_unpack')
-    print(scope + ' initial length ' + str(len(inputs_lst)))
-    print(scope + ' initial shape: ',
-          tf.Tensor.get_shape(inputs_lst[0]))
+    input_shape = tf.Tensor.get_shape(inputs)
+    print(scope + ' initial shape: ', input_shape)
     concat_inputs = []
-    for time_i in range(1, len(inputs_lst), 2):
-        concat_input = tf.concat(1, [inputs_lst[time_i-1],
-                                     inputs_lst[time_i]])
+    for time_i in range(1, int(input_shape[1]), 2):
+        concat_input = tf.concat(1, [inputs[:, time_i-1, :],
+                                     inputs[:, time_i, :]],
+                                 name='plstm_concat')
         concat_inputs.append(concat_input)
 
-    print(scope + ' concat length ' + str(len(concat_inputs)))
-    print(scope + ' concat shape: ',
-          tf.Tensor.get_shape(concat_inputs[0]))
     inputs = tf.pack(concat_inputs, axis=1, name='plstm_pack')
-    sequence_lengths = tf.cast(tf.ceil(sequence_lengths/2),
+
+    concat_shape = tf.Tensor.get_shape(inputs)
+    print(scope + '  concat shape: ', concat_shape)
+
+    sequence_lengths = tf.cast(tf.floor(sequence_lengths/2),
                                tf.int32)
     return inputs, sequence_lengths

@@ -32,13 +32,19 @@ class LasModel(Classifier):
                                  out_weights_std=0.1)
 
         ###Attend and SPELL
-        print('creating attend and spell functions...')
         self.attend_and_spell_cell = AttendAndSpellCell(las_model=self)
 
     def __call__(self, inputs, seq_length, is_training=False, reuse=True,
                  scope=None, targets=None):
+
+        print('\x1b[01;32m'
+              + "Adding LAS conputations, training_graph:", is_training,
+              '\x1b[0m')
+
         #inputs = tf.cast(inputs, self.dtype)
         targets = tf.cast(targets, self.dtype)
+
+        print("las input shape:", tf.Tensor.get_shape(inputs))
 
         if is_training is True:
             assert targets is not None
