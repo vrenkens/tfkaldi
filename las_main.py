@@ -72,9 +72,9 @@ TRAIN = "/train/40fbank"
 PHONEMES = False
 MAX_BATCH_SIZE = 128
 #askoy
-UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
+#UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
 #spchcl22
-#UTTERANCES_PER_MINIBATCH = 64 #time vs memory tradeoff.
+UTTERANCES_PER_MINIBATCH = 64 #time vs memory tradeoff.
 
 MEL_FEATURE_NO = 40
 
@@ -130,6 +130,7 @@ epoch_loss_lst = []
 epoch_loss_lst_val = []
 
 print("Graph done, starting computation.")
+las_trainer.start_visualization('log')
 #start a tensorflow session
 config = tf.ConfigProto()
 #pylint does not get the tensorflow object members right.
@@ -154,8 +155,8 @@ with tf.Session(graph=las_trainer.graph, config=config):
         print('loss:', train_loss)
         epoch = epoch + 1
 
-        if epoch%10 == 0:
-            print("-----  validation Step --- time since start [min] ---",
+        if epoch%5 == 0:
+            print("-----  validation Step --- time since start [min]   ",
                   (time.time() - start_time)/60.0)
             epoch_loss_lst.append(train_loss)
 
