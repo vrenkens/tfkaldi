@@ -50,7 +50,15 @@ class TargetCoder(object):
         normalized_targets = self.target_normalizer(targets,
                                                     self.lookup.keys())
 
+        #TODO: Turn this code into an alignment normalizer.
+        if type(targets) is not list:
+            unicode_targets = targets.split(' ')
+            normalized_targets = []
+            for uni in unicode_targets:
+                normalized_targets.append(uni.encode('utf8'))
+
         encoded_targets = []
+
         for target in normalized_targets:
             encoded_targets.append(self.lookup[target])
         return np.array(encoded_targets, dtype=np.uint32)

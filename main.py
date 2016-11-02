@@ -2,6 +2,7 @@
 run this file to go through the neural net training procedure, look at the config files in the config directory to modify the settings'''
 
 from __future__ import print_function
+from __future__ import absolute_import
 
 import os
 from six.moves import configparser
