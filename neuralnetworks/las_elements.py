@@ -48,7 +48,7 @@ class Listener(object):
     def __call__(self, input_features, sequence_lengths):
         """ Compute the output of the listener function. """
         #compute the base layer blstm output.
-        with tf.variable_scope(type(self).__name__, reuse=self.reuse):
+        with tf.variable_scope(type(self).__name__, reuse=self.reuse) as scope:
             hidden_values, sequence_lengths = \
                 self.blstm_layer(input_features,
                                  sequence_lengths,
@@ -61,26 +61,28 @@ class Listener(object):
                                 sequence_lengths,
                                 reuse=self.reuse,
                                 scope=("plstm_layer_" + str(counter)))
-            output_values = self.linear_output_layer(hidden_values)
+            output_values = self.linear_output_layer(hidden_values, scope)
         if self.reuse is None:
             self.reuse = True
         return output_values
 
-    def linear_output_layer(self, hidden_values):
+    def linear_output_layer(self, hidden_values, scope):
         """ Run the concatenated forward and backward layer computations trough
             a simple linear output layer as described in:
             Speech recognition with deep recurrent neural networks,
             Graves, A, Mohamed, A.-R., Hinton, G
         """
         reuse = None or self.reuse
-        hidden_values_lst = tf.unpack(hidden_values, axis=1)
-        output_values_lst = []
-        for output_value in hidden_values_lst:
-            output_values_lst.append(self.output_layer(
-                output_value, reuse=reuse, scope=("linear_output_layer")))
-            if reuse is None:
-                reuse = True
-        output_values = tf.pack(output_values_lst, axis=1)
+        scope = type(self).__name__ + "_linear_output_layer"
+        with tf.variable_scope(scope, reuse=reuse):
+            hidden_values_lst = tf.unpack(hidden_values, axis=1)
+            output_values_lst = []
+            for output_value in hidden_values_lst:
+                output_values_lst.append(self.output_layer(
+                    output_value, reuse=reuse, scope=scope))
+                if reuse is None:
+                    reuse = True
+            output_values = tf.pack(output_values_lst, axis=1)
         return output_values
 
 #create a tf style cell state tuple object to derive the actual tuple from.
@@ -299,42 +301,43 @@ class AttendAndSpellCell(RNNCell):
             pre_context_out, pre_context_states = \
                     self.pre_context_rnn(rnn_input, pre_context_states)
 
-            #for loop running trough the high level features.
-            #assert len(high level features) == U.
 
-            phi = self.state_net(pre_context_out)
-            scalar_energy_lst = []
-            for feat_vec in self.high_lvl_features:
+            with tf.variable_scope("attention_context", reuse=reuse):
                 ### compute the attention context. ###
                 # e_(i,u) = psi(s_i)^T * phi(h_u)
-                psi = self.featr_net(feat_vec)
-                scalar_energy = tf.reduce_sum(psi*phi, reduction_indices=1,
-                                              name='dot_sum')
-                scalar_energy_lst.append(scalar_energy)
-            # alpha = softmax(e_(i,u))
-            scalar_energy_tensor = tf.convert_to_tensor(scalar_energy_lst)
-            #Alpha has the same shape as the scalar_energy_tensor
-            alpha = tf.nn.softmax(scalar_energy_tensor)
+                phi = self.state_net(pre_context_out)
+                scalar_energy_lst = []
+                #for loop running trough the high level features.
+                #assert len(high level features) == U.
+                for feat_vec in self.high_lvl_features:
+                    psi = self.featr_net(feat_vec)
+                    scalar_energy = tf.reduce_sum(psi*phi, reduction_indices=1,
+                                                  name='dot_sum')
+                    scalar_energy_lst.append(scalar_energy)
+                # alpha = softmax(e_(i,u))
+                scalar_energy_tensor = tf.convert_to_tensor(scalar_energy_lst)
+                #Alpha has the same shape as the scalar_energy_tensor
+                alpha = tf.nn.softmax(scalar_energy_tensor)
 
-            #record the scalar_enrgies and alphas for later analysis.
-            #TODO: Fix:
-            # InvalidArgumentError: All inputs to node MergeSummary/
-            # MergeSummary must be from the same frame.
-            #Error!!!
-            #tf.histogram_summary('scalar_energies', scalar_energy_tensor)
-            #tf.histogram_summary('alphas', alpha)
+                #record the scalar_enrgies and alphas for later analysis.
+                #TODO: Fix:
+                # InvalidArgumentError: All inputs to node MergeSummary/
+                # MergeSummary must be from the same frame.
+                #Error!!!
+                #tf.histogram_summary('scalar_energies', scalar_energy_tensor)
+                #tf.histogram_summary('alphas', alpha)
 
-            ### find the context vector. ###
-            # c_i = sum(alpha*h_i)
-            context_vector = 0*context_vector
-            for t in range(0, len(self.high_lvl_features)):
-                #reshaping from (batch_size,) to (batch_size,1) is
-                #needed for broadcasting.
-                current_alpha = tf.reshape(alpha[t, :],
-                                           [self.las_model.batch_size,
-                                            1])
-                context_vector = (context_vector
-                                  + current_alpha*self.high_lvl_features[t])
+                ### find the context vector. ###
+                # c_i = sum(alpha*h_i)
+                context_vector = 0*context_vector
+                for t in range(0, len(self.high_lvl_features)):
+                    #reshaping from (batch_size,) to (batch_size,1) is
+                    #needed for broadcasting.
+                    current_alpha = tf.reshape(alpha[t, :],
+                                               [self.las_model.batch_size,
+                                                1])
+                    context_vector = (context_vector
+                                      + current_alpha*self.high_lvl_features[t])
 
             if self.type_two is True:
                 post_context_out, post_context_states = \

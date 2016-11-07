@@ -57,7 +57,7 @@ MOMENTUM = 0.9
 OMEGA = 0.001 #weight regularization term.
 #LEARNING_RATE = 0.0001       #too low?
 #MOMENTUM = 0.6              #play with this.
-MAX_N_EPOCHS = 600
+MAX_N_EPOCHS = 1200
 OVERFIT_TOL = 99999
 
 ####Network Parameters
@@ -98,7 +98,7 @@ n_classes = AURORA_LABELS
 
 test_batch = test_dispenser.get_batch()
 #create the las arcitecture
-las_model = LasModel(max_time_steps, MEL_FEATURE_NO, UTTERANCES_PER_MINIBATCH,
+las_model = LasModel(MEL_FEATURE_NO, UTTERANCES_PER_MINIBATCH,
                      AURORA_LABELS)
 
 #las_trainer = LasTrainer(las_model, LEARNING_RATE, OMEGA)

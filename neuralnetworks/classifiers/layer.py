@@ -76,7 +76,7 @@ class BLSTMLayer(object):
         BlstmLayer constructor
         Args:
             num_units: The number of units in the LSTM
-            pyramidal: indicates if a pyramidal or p
+            pyramidal: indicates if a pyramidal BLSTM is desired.
         """
 
         self.num_units = num_units
@@ -111,8 +111,9 @@ class BLSTMLayer(object):
                                           use_peepholes=True)
 
             if self.pyramidal is True:
-                inputs, sequence_lengths = concat(inputs, sequence_lengths,
-                                                  scope)
+                inputs, sequence_lengths = concatenate(inputs,
+                                                       sequence_lengths,
+                                                       scope)
 
             #outputs, output_states
             outputs, _ = bidirectional_dynamic_rnn(
@@ -121,7 +122,7 @@ class BLSTMLayer(object):
             outputs = tf.concat(2, outputs)
         return outputs, sequence_lengths
 
-def concat(inputs, sequence_lengths, scope):
+def concatenate(inputs, sequence_lengths, scope):
     """
     Turn the blstm into a plstm by input concatinations.
     Args:

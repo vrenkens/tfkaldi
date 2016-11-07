@@ -1,5 +1,6 @@
 '''@file nnet.py
 contains the functionality for a Kaldi style neural network'''
+from __future__ import absolute_import
 
 import shutil
 import os
@@ -27,6 +28,7 @@ class Nnet(object):
         #get nnet structure configs
         self.conf = dict(conf.items('nnet'))
 
+
         #define location to save neural nets
         self.conf['savedir'] = (conf.get('directories', 'expdir')
                                 + '/' + self.conf['name'])
@@ -39,30 +41,33 @@ class Nnet(object):
         #compute the input_dimension of the spliced features
         self.input_dim = input_dim * (2*int(self.conf['context_width']) + 1)
 
-        if self.conf['batch_norm'] == 'True':
-            activation_fun = activation.Batchnorm(None)
-        else:
-            activation_fun = None
 
-        # attempted to fix python 3 crash:
+        # Note, python 3 crash:
         # "local variable 'activation' referenced before assignment"
-        # by renaming activation to activation_fun.
-        # create the activation function
+        if self.conf['batch_norm'] == 'True':
+            activation = classifiers.activation.Batchnorm(None)
+        else:
+            activation = None
+
+        #create the activation function
         if self.conf['nonlin'] == 'relu':
-            activation_fun = activation.TfActivation(activation, tf.nn.relu)
+            activation = classifiers.activation.TfActivation(activation,
+                                                             tf.nn.relu)
 
         elif self.conf['nonlin'] == 'sigmoid':
-            activation_fun = activation.TfActivation(activation, tf.nn.sigmoid)
+            activation = classifiers.activation.TfActivation(activation,
+                                                             tf.nn.sigmoid)
 
         elif self.conf['nonlin'] == 'tanh':
-            activation_fun = activation.TfActivation(activation, tf.nn.tanh)
+            activation = classifiers.activation.TfActivation(activation,
+                                                             tf.nn.tanh)
 
         elif self.conf['nonlin'] == 'linear':
-            activation_fun = activation.TfActivation(activation, lambda x: x)
+            activation = classifiers.activation.TfActivation(activation,
+                                                             lambda(x): x)
 
         else:
-            raise Exception('unkown nonlinearity')
-
+raise Exception('unkown nonlinearity')
         if self.conf['l2_norm'] == 'True':
             activation_fun = activation.L2Norm(activation)
 

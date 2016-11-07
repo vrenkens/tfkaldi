@@ -71,13 +71,15 @@ class Trainer(object):
             trainlogits, logit_seq_length, self.modelsaver, self.control_ops =\
                 classifier(self.inputs, self.input_seq_length,
                            is_training=True, reuse=False, scope='Classifier',
-                           targets=self.targets)
+                           targets=self.targets,
+                           target_seq_length=self.target_seq_length)
 
             #compute the validation output of the nnetgraph
-            logits, _, _, _ = classifier(self.inputs, self.input_seq_length,
-                                         is_training=False, reuse=True,
-                                         scope='Classifier',
-                                         targets=self.targets)
+            #TODO: use the sequence lengths here.
+            logits, _, _, _ = classifier(
+                self.inputs, self.input_seq_length,
+                is_training=False, reuse=True, scope='Classifier',
+                targets=self.targets, target_seq_length=self.target_seq_length)
 
             #get a list of trainable variables in the decoder graph
             params = tf.trainable_variables()
