@@ -3,6 +3,7 @@ This module implements a listen attend and spell classifier.
 '''
 
 import sys
+import collections
 import tensorflow as tf
 
 # we are currenly in neuralnetworks, add it to the path.
@@ -10,7 +11,6 @@ sys.path.append("neuralnetworks")
 from classifiers.classifier import Classifier
 from las_elements import Listener
 from neuralnetworks.las_elements import AttendAndSpellCell
-from neuralnetworks.las_elements import StateTouple
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 
@@ -62,9 +62,13 @@ class LasModel(Classifier):
         print("    decoding_graph:", self.decoding, '\x1b[0m')
 
         #inputs = tf.cast(inputs, self.dtype)
-        targets = tf.cast(targets, self.dtype)
+        if targets is not None:
+            targets = tf.cast(targets, self.dtype)
+        else:
+            assert self.decoding is True, "Las Training uses the targets."
 
-        print("las input shape:", tf.Tensor.get_shape(inputs))
+        input_shape = tf.Tensor.get_shape(inputs)
+        print("las input shape:", input_shape)
 
         if is_training is True:
             assert targets is not None
@@ -93,7 +97,8 @@ class LasModel(Classifier):
                     self.batch_size, self.dtype)
 
                 logits = tf.get_variable('logits',
-                                         shape=[self.batch_size, None,
+                                         shape=[self.batch_size,
+                                                input_shape[1],
                                                 self.target_label_no],
                                          dtype=self.dtype,
                                          trainable=False)
@@ -103,8 +108,9 @@ class LasModel(Classifier):
                                        dtype=self.dtype,
                                        trainable=False,
                                        initializer=zero_init)
-                loop_vars = StateTouple(logits, cell_state, time)
+                loop_vars = DecodingTouple(logits, cell_state, time)
 
+                debug_here()
                 result = tf.while_loop(self.cond, self.body, loop_vars)
 
                 logits, cell_state, time = result
@@ -125,7 +131,7 @@ class LasModel(Classifier):
             has been exeeded.'''
 
         _, cell_state, time = loop_vars
-        _, _, char_dist_vec, _, _ = cell_state
+        _, _, char_dist_vec, _ = cell_state
 
         #the encoding table has the eos token ">" placed at position 0.
         #i.e. " ", "<", ">", ...
@@ -140,9 +146,8 @@ class LasModel(Classifier):
         return keep_working
 
     def body(self, loop_vars):
-        """ The body of the decoding while loop. Contains a manual enrolling
-            of the attend and spell computations.
-            """
+        ''' The body of the decoding while loop. Contains a manual enrolling
+            of the attend and spell computations.  '''
 
         prev_logits, cell_state, time = loop_vars
         time = time + 1
@@ -153,5 +158,27 @@ class LasModel(Classifier):
         logits = tf.concat(1, prev_logits, logits)
         logits.set_shape([self.batch_size, None, self.target_label_no])
 
-        loop_vars = StateTouple(logits, cell_state, time)
-        return loop_vars
+        out_vars = DecodingTouple(logits, cell_state, time)
+        return out_vars
+
+#create a tf style cell state tuple object to derive the actual tuple from.
+_DecodingStateTouple = \
+    collections.namedtuple(
+        "_DecodingStateTouple",
+        "logits, cell_state, time"
+        )
+class DecodingTouple(_DecodingStateTouple):
+    """ Tuple used by Attend and spell cells for `state_size`,
+     `zero_state`, and output state.
+      Stores three elements:
+      `(logits, cell_state, time)`, in that order.
+    """
+    @property
+    def dtype(self):
+        """Check if the all internal state variables have the same data-type
+           if yes return that type. """
+        for i in range(1, len(self)):
+            if self[i-1].dtype != self[i].dtype:
+                raise TypeError("Inconsistent internal state: %s vs %s" %
+                                (str(self[i-1].dtype), str(self[i].dtype)))
+        return self[0].dtype

@@ -86,6 +86,7 @@ class LasDecoder(Decoder):
     def __init__(self, classifier, input_dim, max_length):
         '''
         Las Decoder constructor, creates the decoding graph
+        The decoder expects a batch size of one utterance for now.
 
         Args:
             classifier: the classifier that will be used for decoding.
@@ -99,7 +100,7 @@ class LasDecoder(Decoder):
 
             #create the inputs placeholder
             self.inputs = tf.placeholder(
-                tf.float32, shape=[max_length, input_dim], name='inputs')
+                tf.float32, shape=[1, max_length, input_dim], name='inputs')
 
             #create the sequence length placeholder
             self.seq_length = tf.placeholder(
