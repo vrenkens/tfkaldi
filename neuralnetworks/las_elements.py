@@ -8,6 +8,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops.rnn_cell import RNNCell
+from tensorflow.python.util import nest
 
 # we are currenly in neuralnetworks, add it to the path.
 from neuralnetworks.classifiers.layer import FFLayer
@@ -100,13 +101,28 @@ class StateTouple(_AttendAndSpellStateTouple):
     """
     @property
     def dtype(self):
-        """Check if the all internal state variables have the same data-type
-           if yes return that type. """
+        """ Check if the all internal state variables have the same data-type
+            if yes return that type. """
         for i in range(1, len(self)):
             if self[i-1].dtype != self[i].dtype:
                 raise TypeError("Inconsistent internal state: %s vs %s" %
                                 (str(self[i-1].dtype), str(self[i].dtype)))
         return self[0].dtype
+
+    @property
+    def _shape(self):
+        """ Make shure tf.Tensor.get_shape(this) returns  the correct output.
+        """
+        return self.get_shape()
+
+    def get_shape(self):
+        """ Return the shapes of the elements contained in the state tuple. """
+        flat_shapes = []
+        flat_self = nest.flatten(self)
+        for i in range(0, len(flat_self)):
+            flat_shapes.append(tf.Tensor.get_shape(flat_self[i]))
+        shapes = nest.pack_sequence_as(self, flat_shapes)
+        return shapes
 
 
 class AttendAndSpellCell(RNNCell):

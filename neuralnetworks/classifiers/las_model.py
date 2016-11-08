@@ -5,6 +5,7 @@ This module implements a listen attend and spell classifier.
 import sys
 import collections
 import tensorflow as tf
+from tensorflow.python.util import nest
 
 # we are currenly in neuralnetworks, add it to the path.
 sys.path.append("neuralnetworks")
@@ -96,24 +97,34 @@ class LasModel(Classifier):
                 cell_state = self.attend_and_spell_cell.zero_state(
                     self.batch_size, self.dtype)
 
-                logits = tf.get_variable('logits',
-                                         shape=[self.batch_size,
-                                                input_shape[1],
-                                                self.target_label_no],
-                                         dtype=self.dtype,
-                                         trainable=False)
+
+                _, _, one_hot_char, _ = cell_state
+                logits = tf.expand_dims(one_hot_char, 1)
+
                 zero_init = tf.constant_initializer(0)
                 time = tf.get_variable('time',
                                        shape=[],
                                        dtype=self.dtype,
                                        trainable=False,
                                        initializer=zero_init)
+                #turn time from a variable into a tensor.
+                time = tf.identity(time)
                 loop_vars = DecodingTouple(logits, cell_state, time)
 
-                debug_here()
-                result = tf.while_loop(self.cond, self.body, loop_vars)
+                #set up the shape invariants for the while loop.
+                shape_invariants = loop_vars.get_shape()
+                flat_invariants = nest.flatten(shape_invariants)
+                flat_invariants[0] = tf.TensorShape([self.batch_size,
+                                                     None,
+                                                     self.target_label_no])
+                shape_invariants = nest.pack_sequence_as(shape_invariants,
+                                                         flat_invariants)
 
-                logits, cell_state, time = result
+
+                result = tf.while_loop(
+                    self.cond, self.body, loop_vars=[loop_vars],
+                    shape_invariants=[shape_invariants])
+                logits, cell_state, time = result[0]
 
             # The saver can be used to restore the variables in the graph
             # from file later.
@@ -131,14 +142,15 @@ class LasModel(Classifier):
             has been exeeded.'''
 
         _, cell_state, time = loop_vars
-        _, _, char_dist_vec, _ = cell_state
+        _, _, one_hot_char, _ = cell_state
 
         #the encoding table has the eos token ">" placed at position 0.
         #i.e. " ", "<", ">", ...
-        eos_prob = char_dist_vec[:, 0]
+        eos_prob = one_hot_char[:, 0]
         loop_continue_conditions = tf.logical_and(
-            tf.less(eos_prob, self.eos_treshold),
+            tf.less(eos_prob, self.eos_treshold), #TODO: change to not equal.
             tf.less(time, self.max_decoding_steps))
+
 
         loop_continue_counter = tf.reduce_sum(tf.to_int32(
             loop_continue_conditions))
@@ -155,11 +167,12 @@ class LasModel(Classifier):
         logits, cell_state = \
             self.attend_and_spell_cell(None, cell_state)
 
-        logits = tf.concat(1, prev_logits, logits)
+        logits = tf.expand_dims(logits, 1)
+        logits = tf.concat(1, [prev_logits, logits])
         logits.set_shape([self.batch_size, None, self.target_label_no])
 
         out_vars = DecodingTouple(logits, cell_state, time)
-        return out_vars
+        return [out_vars]
 
 #create a tf style cell state tuple object to derive the actual tuple from.
 _DecodingStateTouple = \
@@ -182,3 +195,18 @@ class DecodingTouple(_DecodingStateTouple):
                 raise TypeError("Inconsistent internal state: %s vs %s" %
                                 (str(self[i-1].dtype), str(self[i].dtype)))
         return self[0].dtype
+
+    @property
+    def _shape(self):
+        """ Make shure tf.Tensor.get_shape(this) returns  the correct output.
+        """
+        return self.get_shape()
+
+    def get_shape(self):
+        """ Return the shapes of the elements contained in the state tuple. """
+        flat_shapes = []
+        flat_self = nest.flatten(self)
+        for i in range(0, len(flat_self)):
+            flat_shapes.append(tf.Tensor.get_shape(flat_self[i]))
+        shapes = nest.pack_sequence_as(self, flat_shapes)
+        return shapes
