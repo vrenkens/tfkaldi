@@ -57,7 +57,7 @@ AURORA_LABELS = 32
 AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
-MAX_BATCH_SIZE = 1
+MAX_BATCH_SIZE = 64
 
 
 MEL_FEATURE_NO = 40
@@ -96,7 +96,22 @@ max_target_length = np.max([train_dispenser.max_target_length,
                             test_dispenser.max_target_length])
 
 
-las_decoder = LasDecoder(las_model, MEL_FEATURE_NO, max_time_steps)
+las_decoder = LasDecoder(las_model, MEL_FEATURE_NO, max_time_steps,
+                         MAX_BATCH_SIZE)
 
-test_batch = test_dispenser.get_batch()
+
+
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+with tf.Session(graph=las_decoder.graph, config=config):
+
+    las_decoder.restore(
+        'saved_models/spchcl23.esat.kuleuven.be-2016-11-10.mdl',
+        )
+
+    test_batch = test_dispenser.get_batch()
+    inputs = test_batch[0]
+    targets = test_batch[1]
+
+    decoded = las_decoder(inputs)
 

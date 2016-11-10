@@ -194,7 +194,8 @@ class AttendAndSpellCell(RNNCell):
     def set_features(self, high_lvl_features):
         ''' Set the features when available, storing the features in the
             object makes the cell call simpler.'''
-        print("   Feature dimension:", tf.Tensor.get_shape(high_lvl_features))
+        print("     Feature dimension:",
+              tf.Tensor.get_shape(high_lvl_features))
         self.high_lvl_features = tf.unpack(high_lvl_features, axis=1)
 
 
@@ -260,7 +261,7 @@ class AttendAndSpellCell(RNNCell):
             # while the zero states functions create normal dtypes.
             # without the identity op the network unrolling chrashes.
             one_hot_char = tf.identity(one_hot_char)
-            print("  shape one_hot_char:", tf.Tensor.get_shape(one_hot_char))
+            print("    one_hot_char shape:", tf.Tensor.get_shape(one_hot_char))
             # The dimension of the context vector is determined by the listener
             # output dimension.
             context_vector = tf.get_variable(
@@ -270,7 +271,8 @@ class AttendAndSpellCell(RNNCell):
                 initializer=zero_initializer,
                 trainable=False, dtype=dtype)
             context_vector = tf.identity(context_vector)
-            print("shape context_vector:", tf.Tensor.get_shape(context_vector))
+            print("  context_vector shape:",
+                  tf.Tensor.get_shape(context_vector))
 
             #--------------------Create one hot char constants----------------#
             ones_init = np.ones(self.las_model.batch_size)
@@ -303,16 +305,39 @@ class AttendAndSpellCell(RNNCell):
             if self.high_lvl_features is None:
                 raise AttributeError("Features must be set.")
 
-            #TODO in training mode pick the last output sometimes.
+            #Pick the last output sometimes.
             if groundtruth_char is not None:
                 one_hot_char = groundtruth_char
 
+                # def pick_ground_trouth():
+                #     """ Return the true value, from the set annotations."""
+                #     return groundtruth_char
+                # def pick_last_output():
+                #     """ Return the last network output (sometimes wrong),
+                #         to expose the network to false predictions. """
+                #     return one_hot_char
+                # def pred():
+                #     """ Return the network output net_out_prob*100 percent
+                #         of the time."""
+                #     net_out_prob = 0.2
+                #     return tf.greater(rand_val, net_out_prob)
+
+                # rand_val = tf.random_uniform(shape=(), minval=0.0, maxval=1.0,
+                #                              dtype=tf.float32, seed=None,
+                #                              name='random_uniform')
+                # one_hot_char = tf.cond(pred(),
+                #                        pick_ground_trouth,
+                #                        pick_last_output,
+                #                        name='truth_or_output_sel')
+
+
             #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
-            #Dimensions:   alphabet_size,       31
-            #            + listener_output_dim, 64
-            #                                   95
+            #Dimensions:   alphabet_size,       32
+            #            + listener_output_dim, 40
+            #                                   72
             rnn_input = tf.concat(1, [one_hot_char, context_vector],
                                   name='pre_context_rnn_input_concat')
+            print('pre_context input size:', tf.Tensor.get_shape(rnn_input))
 
             pre_context_out, pre_context_states = \
                     self.pre_context_rnn(rnn_input, pre_context_states)

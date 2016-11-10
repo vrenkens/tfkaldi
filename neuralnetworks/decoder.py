@@ -4,6 +4,7 @@ neural network decoder environment'''
 import tensorflow as tf
 import numpy as np
 from neuralnetworks.classifiers import seq_convertors
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 class Decoder(object):
     '''Class for the decoding environment for a neural net classifier'''
@@ -83,7 +84,7 @@ class Decoder(object):
         self.saver.restore(tf.get_default_session(), filename)
 
 class LasDecoder(Decoder):
-    def __init__(self, classifier, input_dim, max_length):
+    def __init__(self, classifier, input_dim, max_length, batch_size):
         '''
         Las Decoder constructor, creates the decoding graph
         The decoder expects a batch size of one utterance for now.
@@ -95,16 +96,19 @@ class LasDecoder(Decoder):
 
         self.graph = tf.Graph()
         self.max_length = max_length
+        self.input_dim = input_dim
+        self.batch_size = batch_size
 
         with self.graph.as_default():
 
             #create the inputs placeholder
             self.inputs = tf.placeholder(
-                tf.float32, shape=[1, max_length, input_dim], name='inputs')
+                tf.float32, shape=[self.batch_size, max_length, input_dim],
+                name='inputs')
 
             #create the sequence length placeholder
             self.seq_length = tf.placeholder(
-                tf.int32, shape=[1], name='seq_length')
+                tf.int32, shape=[self.batch_size], name='seq_length')
 
             #create the decoding graph
             logits, _, self.saver, _ = classifier(self.inputs,
@@ -134,14 +138,13 @@ class LasDecoder(Decoder):
         '''
 
         #get the sequence length
-        seq_length = [inputs.shape[0]]
+        input_seq_length = [i.shape[0] for i in inputs]
 
-        #pad the inputs
-        inputs = np.append(inputs,
-                           np.zeros([self.max_length-inputs.shape[0],
-                                     inputs.shape[1]]),
-                           0)
+        #pad the inputs with zeros. Their shape will be the same after this.
+        inputs = [np.pad(i,
+                         ((0, self.max_length-i.shape[0]), (0, 0)),
+                         'constant') for i in inputs]
 
         #pylint: disable=E1101
         return self.outputs.eval(feed_dict={self.inputs:inputs,
-                                            self.seq_length:seq_length})
+                                            self.seq_length:input_seq_length})

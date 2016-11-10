@@ -57,7 +57,7 @@ MOMENTUM = 0.9
 OMEGA = 0.001 #weight regularization term.
 #LEARNING_RATE = 0.0001       #too low?
 #MOMENTUM = 0.6              #play with this.
-MAX_N_EPOCHS = 1200
+MAX_N_EPOCHS = 2
 OVERFIT_TOL = 99999
 
 ####Network Parameters
@@ -89,8 +89,7 @@ test_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
 test_feature_reader = val_dispenser.split_reader(606)
 test_dispenser.feature_reader = test_feature_reader
 
-#BATCH_COUNT = train_dispenser.get_batch_count()
-BATCH_COUNT = 5
+BATCH_COUNT = train_dispenser.num_batches
 BATCH_COUNT_VAL = val_dispenser.num_batches
 BATCH_COUNT_TEST = test_dispenser.num_batches
 print(BATCH_COUNT, BATCH_COUNT_VAL, BATCH_COUNT_TEST)
@@ -201,6 +200,7 @@ with tf.Session(graph=las_trainer.graph, config=config):
                + '-' + today \
                + ".mdl"
     las_trainer.save_model(filename)
+    print("Model saved in file: %s" % filename)
 
     #run the network on the test data set.
     inputs, targets = test_dispenser.get_batch()

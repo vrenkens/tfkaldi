@@ -64,7 +64,14 @@ class LasModel(Classifier):
 
         #inputs = tf.cast(inputs, self.dtype)
         if targets is not None:
-            targets = tf.cast(targets, self.dtype)
+            #one hot encode the targets:
+            target_one_hot = tf.one_hot(targets,
+                                        self.target_label_no,
+                                        axis=2)
+            #one hot encoding adds an extra dimension we don't want.
+            #squeeze it out.
+            target_one_hot = tf.squeeze(target_one_hot, squeeze_dims=[3])
+            print("train targets shape: ", tf.Tensor.get_shape(target_one_hot))
         else:
             assert self.decoding is True, "Las Training uses the targets."
 
@@ -83,48 +90,53 @@ class LasModel(Classifier):
             if self.decoding is not True:
                 print('adding attend and spell computations to the graph...')
                 #training mode
+
+
                 self.attend_and_spell_cell.set_features(high_level_features)
                 zero_state = self.attend_and_spell_cell.zero_state(
                     self.batch_size, self.dtype)
                 logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
-                                              inputs=targets,
+                                              inputs=target_one_hot,
                                               initial_state=zero_state,
                                               time_major=False,
-                                              scope='Listen_and_Spell')
+                                              scope='attend_and_spell')
             else:
                 print('adding attend and spell computations to the graph...')
+
                 self.attend_and_spell_cell.set_features(high_level_features)
                 cell_state = self.attend_and_spell_cell.zero_state(
                     self.batch_size, self.dtype)
 
+                with tf.variable_scope('attend_and_spell'):
+                    _, _, one_hot_char, _ = cell_state
+                    logits = tf.expand_dims(one_hot_char, 1)
 
-                _, _, one_hot_char, _ = cell_state
-                logits = tf.expand_dims(one_hot_char, 1)
+                    #zero_init = tf.constant_initializer(0)
+                    #time = tf.get_variable('time',
+                    #                       shape=[],
+                    #                       dtype=self.dtype,
+                    #                      trainable=False,
+                    #                      initializer=zero_init)
+                    time = tf.constant(0, self.dtype, shape=[])
 
-                zero_init = tf.constant_initializer(0)
-                time = tf.get_variable('time',
-                                       shape=[],
-                                       dtype=self.dtype,
-                                       trainable=False,
-                                       initializer=zero_init)
-                #turn time from a variable into a tensor.
-                time = tf.identity(time)
-                loop_vars = DecodingTouple(logits, cell_state, time)
+                    #turn time from a variable into a tensor.
+                    time = tf.identity(time)
+                    loop_vars = DecodingTouple(logits, cell_state, time)
 
-                #set up the shape invariants for the while loop.
-                shape_invariants = loop_vars.get_shape()
-                flat_invariants = nest.flatten(shape_invariants)
-                flat_invariants[0] = tf.TensorShape([self.batch_size,
-                                                     None,
-                                                     self.target_label_no])
-                shape_invariants = nest.pack_sequence_as(shape_invariants,
-                                                         flat_invariants)
+                    #set up the shape invariants for the while loop.
+                    shape_invariants = loop_vars.get_shape()
+                    flat_invariants = nest.flatten(shape_invariants)
+                    flat_invariants[0] = tf.TensorShape([self.batch_size,
+                                                         None,
+                                                         self.target_label_no])
+                    shape_invariants = nest.pack_sequence_as(shape_invariants,
+                                                             flat_invariants)
 
 
-                result = tf.while_loop(
-                    self.cond, self.body, loop_vars=[loop_vars],
-                    shape_invariants=[shape_invariants])
-                logits, cell_state, time = result[0]
+                    result = tf.while_loop(
+                        self.cond, self.body, loop_vars=[loop_vars],
+                        shape_invariants=[shape_invariants])
+                    logits, cell_state, time = result[0]
 
             # The saver can be used to restore the variables in the graph
             # from file later.
