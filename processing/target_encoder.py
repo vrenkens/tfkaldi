@@ -72,7 +72,7 @@ class TargetCoder(object):
         targets = [self.lookup.keys()[encoded_target]
                    for encoded_target in encoded_targets]
 
-        return ' '.join(targets)
+        return ''.join(targets)
 
     @property
     def num_labels(self):

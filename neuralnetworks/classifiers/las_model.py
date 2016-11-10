@@ -52,7 +52,9 @@ class LasModel(Classifier):
                                  out_weights_std=0.1)
 
         ###Attend and SPELL
-        self.attend_and_spell_cell = AttendAndSpellCell(las_model=self)
+        self.attend_and_spell_cell = AttendAndSpellCell(
+            las_model=self, decoder_state_size=40, feedforward_hidden_units=56,
+            feedforward_hidden_layers=3)
 
     def __call__(self, inputs, seq_length, is_training=False, reuse=True,
                  scope=None, targets=None, target_seq_length=None):

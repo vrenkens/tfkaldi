@@ -307,29 +307,28 @@ class AttendAndSpellCell(RNNCell):
 
             #Pick the last output sometimes.
             if groundtruth_char is not None:
-                one_hot_char = groundtruth_char
+                #one_hot_char = groundtruth_char
 
-                # def pick_ground_trouth():
-                #     """ Return the true value, from the set annotations."""
-                #     return groundtruth_char
-                # def pick_last_output():
-                #     """ Return the last network output (sometimes wrong),
-                #         to expose the network to false predictions. """
-                #     return one_hot_char
-                # def pred():
-                #     """ Return the network output net_out_prob*100 percent
-                #         of the time."""
-                #     net_out_prob = 0.2
-                #     return tf.greater(rand_val, net_out_prob)
+                def pick_ground_trouth():
+                    """ Return the true value, from the set annotations."""
+                    return groundtruth_char
+                def pick_last_output():
+                    """ Return the last network output (sometimes wrong),
+                        to expose the network to false predictions. """
+                    return one_hot_char
+                def pred():
+                    """ Return the network output net_out_prob*100 percent
+                        of the time."""
+                    net_out_prob = 0.2
+                    return tf.greater(rand_val, net_out_prob)
 
-                # rand_val = tf.random_uniform(shape=(), minval=0.0, maxval=1.0,
-                #                              dtype=tf.float32, seed=None,
-                #                              name='random_uniform')
-                # one_hot_char = tf.cond(pred(),
-                #                        pick_ground_trouth,
-                #                        pick_last_output,
-                #                        name='truth_or_output_sel')
-
+                rand_val = tf.random_uniform(shape=(), minval=0.0, maxval=1.0,
+                                             dtype=tf.float32, seed=None,
+                                             name='random_uniform')
+                one_hot_char = tf.cond(pred(),
+                                       pick_ground_trouth,
+                                       pick_last_output,
+                                       name='truth_or_output_sel')
 
             #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
             #Dimensions:   alphabet_size,       32

@@ -57,7 +57,7 @@ AURORA_LABELS = 32
 AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
-MAX_BATCH_SIZE = 64
+MAX_BATCH_SIZE = 32
 
 
 MEL_FEATURE_NO = 40
@@ -106,7 +106,7 @@ config.gpu_options.allow_growth = True
 with tf.Session(graph=las_decoder.graph, config=config):
 
     las_decoder.restore(
-        'saved_models/spchcl23.esat.kuleuven.be-2016-11-10.mdl',
+        'saved_models/spchcl23.esat.kuleuven.be/-2016-11-10.mdl',
         )
 
     test_batch = test_dispenser.get_batch()
@@ -115,3 +115,19 @@ with tf.Session(graph=las_decoder.graph, config=config):
 
     decoded = las_decoder(inputs)
 
+
+def greedy_search(network_output):
+    """ Extract the largets char probability."""
+    utterance_char_batches = []
+    for i in range(0, network_output.shape[0]):
+        utterance_chars_nos = []
+        for t in range(0, network_output.shape[1]):
+            utterance_chars_nos.append(np.argmax(network_output[i, t, :]))
+        utterance_chars = test_dispenser.target_coder.decode(
+            utterance_chars_nos)
+        utterance_char_batches.append(utterance_chars)
+    return np.array(utterance_char_batches)
+
+decoded_targets = greedy_search(decoded)
+
+print(decoded_targets[0])
