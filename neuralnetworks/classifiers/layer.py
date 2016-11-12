@@ -44,10 +44,12 @@ class FFLayer(object):
                     stddev = self.weights_std
                 else:
                     stddev = 1/int(inputs.get_shape()[1])**0.5
+                weight_init = tf.random_normal_initializer(stddev=stddev)
+                #weight_init = tf.random_uniform_initializer(minval=-0.1, maxval=0.1)
 
                 weights = tf.get_variable(
                     'weights', [inputs.get_shape()[1], self.output_dim],
-                    initializer=tf.random_normal_initializer(stddev=stddev))
+                    initializer=weight_init)
 
                 biases = tf.get_variable(
                     'biases', [self.output_dim],
@@ -106,9 +108,11 @@ class BLSTMLayer(object):
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
 
             #create the lstm cell that will be used for the forward and backward
+            lstm_init = tf.random_uniform_initializer(minval=-0.1, maxval=0.1)
             lstm_cell = rnn_cell.LSTMCell(self.num_units,
                                           state_is_tuple=True,
-                                          use_peepholes=True)
+                                          use_peepholes=True,
+                                          initializer=lstm_init)
 
             if self.pyramidal is True:
                 inputs, sequence_lengths = concatenate(inputs,

@@ -104,6 +104,8 @@ las_model = LasModel(general_settings, listener_settings,
 state = las_model.attend_and_spell_cell.zero_state(las_model.batch_size,
                                                    las_model.dtype)
 
+state_size = las_model.attend_and_spell_cell.state_size
+
 with tf.Session():
     tf.initialize_all_variables().run()
     zero_char = state[2].eval()

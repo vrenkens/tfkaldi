@@ -6,16 +6,15 @@
 # fix the pylint import problem.
 # pylint: disable=E0401
 
-import matplotlib.pyplot as plt
-import tensorflow as tf
 import numpy as np
+import pickle
+import tensorflow as tf
 from processing.batch_dispenser import TextBatchDispenser
 from processing.target_normalizers import aurora4_char_norm
 from processing.target_coder import TextEncoder
 from processing.feature_reader import FeatureReader
 from neuralnetworks.classifiers.las_model import LasModel
 from neuralnetworks.decoder import LasDecoder
-from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 
 
@@ -35,7 +34,7 @@ def generate_dispenser(data_path, set_kind, label_no, batch_size, phonemes):
     #                                     max_time_steps,
     #                                      one_hot_encoding=True)
     else:
-      #Create the las encoder.
+        #Create the las encoder.
         target_coder = TextEncoder(aurora4_char_norm)
         dispenser = TextBatchDispenser(feature_reader,
                                        target_coder,
@@ -53,19 +52,22 @@ AURORA_LABELS = 32
 AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
-MAX_BATCH_SIZE = 32
-
-
 MEL_FEATURE_NO = 40
 
+
+epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE, \
+LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH, general_settings, \
+listener_settings, attend_and_spell_settings = \
+pickle.load(open("saved_models/spchcl21.esat.kuleuven.be/2016-11-12.pkl", "rb"))
+
 train_dispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
-                                     MAX_BATCH_SIZE, PHONEMES)
+                                     UTTERANCES_PER_MINIBATCH, PHONEMES)
 TEST = "test/40fbank"
 val_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                   MAX_BATCH_SIZE, PHONEMES)
+                                   UTTERANCES_PER_MINIBATCH, PHONEMES)
 
 test_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                    MAX_BATCH_SIZE, PHONEMES)
+                                    UTTERANCES_PER_MINIBATCH, PHONEMES)
 
 test_feature_reader = val_dispenser.split_reader(606)
 test_dispenser.feature_reader = test_feature_reader
@@ -78,8 +80,10 @@ n_classes = AURORA_LABELS
 
 test_batch = test_dispenser.get_batch()
 #create the las arcitecture
-las_model = LasModel(MEL_FEATURE_NO, MAX_BATCH_SIZE,
-                     AURORA_LABELS, decoding=True)
+#load the graph architecutre settings.
+
+las_model = LasModel(general_settings, listener_settings,
+                     attend_and_spell_settings, decoding=True)
 
 #las_trainer = LasTrainer(las_model, LEARNING_RATE, OMEGA)
 
@@ -91,24 +95,18 @@ max_target_length = np.max([train_dispenser.max_target_length,
                             val_dispenser.max_target_length,
                             test_dispenser.max_target_length])
 
-
 las_decoder = LasDecoder(las_model, MEL_FEATURE_NO, max_time_steps,
-                         MAX_BATCH_SIZE)
-
-
+                         UTTERANCES_PER_MINIBATCH)
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 with tf.Session(graph=las_decoder.graph, config=config):
-
     las_decoder.restore(
-        'saved_models/spchcl23.esat.kuleuven.be/2016-11-12.mdl')
-
+        'saved_models/spchcl21.esat.kuleuven.be/2016-11-12.mdl')
     test_batch = test_dispenser.get_batch()
     inputs = test_batch[0]
     targets = test_batch[1]
     decoded = las_decoder(inputs)
-
 
 def greedy_search(network_output):
     """ Extract the largets char probability."""
