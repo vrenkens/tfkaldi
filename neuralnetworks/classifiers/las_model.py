@@ -14,12 +14,23 @@ from las_elements import Listener
 from neuralnetworks.las_elements import AttendAndSpellCell
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
+GeneralSettings = collections.namedtuple(
+    "GeneralSettings",
+    "mel_feature_no, batch_size, target_label_no, dtype")
+
+ListenerSettings = collections.namedtuple(
+    "ListenerSettings",
+    "lstm_dim, plstm_layer_no, output_dim, out_weights_std")
+
+AttendAndSpellSettings = collections.namedtuple(
+    "AttendAndSpellSettings",
+    "decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers")
 
 class LasModel(Classifier):
     """ A neural end to end network based speech model."""
 
-    def __init__(self, mel_feature_no, batch_size,
-                 target_label_no, decoding=False):
+    def __init__(self, general_settings, listener_settings,
+                 attend_and_spell_settings, decoding=False):
         """
         Create a listen attend and Spell model. As described in,
         Chan, Jaitly, Le et al.
@@ -34,27 +45,29 @@ class LasModel(Classifier):
             decoding: Boolean flag indicating if this graph is going to be
                       used for decoding purposes.
         """
-        super(LasModel, self).__init__(target_label_no)
+        super(LasModel, self).__init__(general_settings.target_label_no)
+        self.gen_set = general_settings
+        self.lst_set = listener_settings
+        self.as_set = attend_and_spell_settings
+
         self.dtype = tf.float32
-        self.mel_feature_no = mel_feature_no
-        self.batch_size = batch_size
-        self.target_label_no = target_label_no
-        self.listen_output_dim = 40
+        self.mel_feature_no = self.gen_set.mel_feature_no
+        self.batch_size = self.gen_set.batch_size
+        self.target_label_no = self.gen_set.target_label_no
         self.decoding = decoding
 
         #decoding constants
         self.eos_treshold = 0.8
         self.max_decoding_steps = 4000
 
-        ###LISTENTER
-        self.listener = Listener(lstm_dim=56, plstm_layer_no=3,
-                                 output_dim=self.listen_output_dim,
-                                 out_weights_std=0.1)
-
-        ###Attend and SPELL
+        #store the two model parts.
+        self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no, 
+                                 self.lst_set.output_dim, self.lst_set.out_weights_std)
         self.attend_and_spell_cell = AttendAndSpellCell(
-            las_model=self, decoder_state_size=40, feedforward_hidden_units=56,
-            feedforward_hidden_layers=3)
+            self, self.as_set.decoder_state_size,
+            self.as_set.feedforward_hidden_units,
+            self.as_set.feedforward_hidden_layers)
+
 
     def __call__(self, inputs, seq_length, is_training=False, reuse=True,
                  scope=None, targets=None, target_seq_length=None):

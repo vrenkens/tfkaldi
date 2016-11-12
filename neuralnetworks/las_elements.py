@@ -37,9 +37,7 @@ class Listener(object):
         #term memory layer.
         self.blstm_layer = BLSTMLayer(lstm_dim, pyramidal=False)
         #on top of are three pyramidal BLSTM layers.
-        self.plstms = []
-        for _ in range(plstm_layer_no):
-            self.plstms.append(BLSTMLayer(lstm_dim, pyramidal=True))
+        self.plstm_layer = BLSTMLayer(lstm_dim, pyramidal=True)
 
         identity_activation = IdentityWrapper()
         self.output_layer = FFLayer(output_dim, identity_activation,
@@ -56,12 +54,12 @@ class Listener(object):
                                  reuse=self.reuse,
                                  scope=("blstm_layer"))
             #move on to the plstm outputs.
-            for counter, plstm_layer in enumerate(self.plstms):
+            for counter in range(self.plstm_layer_no):
                 hidden_values, sequence_lengths = \
-                    plstm_layer(hidden_values,
-                                sequence_lengths,
-                                reuse=self.reuse,
-                                scope=("plstm_layer_" + str(counter)))
+                    self.plstm_layer(hidden_values,
+                                     sequence_lengths,
+                                     reuse=self.reuse,
+                                     scope=("plstm_layer_" + str(counter)))
             output_values = self.linear_output_layer(hidden_values, scope)
         if self.reuse is None:
             self.reuse = True
@@ -177,7 +175,7 @@ class AttendAndSpellCell(RNNCell):
 
         char_net_dimension = FFNetDimension(
             input_dim=self.dec_state_size
-            +         self.las_model.listen_output_dim,
+            +         self.las_model.listener.output_dim,
             output_dim=self.las_model.target_label_no,
             num_hidden_units=self.feedforward_hidden_units,
             num_hidden_layers=self.feedforward_hidden_layers)
@@ -219,68 +217,44 @@ class AttendAndSpellCell(RNNCell):
                            [self.las_model.batch_size,
                             self.las_model.target_label_no],
                            [self.las_model.batch_size,
-                            self.las_model.listen_output_dim])
+                            self.las_model.listener.output_dim])
 
-    def zero_state(self, batch_size, dtype, scope=None, reuse=None):
+    def zero_state(self, batch_size, dtype):
         """Return an initial state for the Attend and state cell.
             @returns an StateTouple object filled with the state variables.
         """
-        zero_state_scope = scope or (type(self).__name__+ "_zero_state")
-        with tf.variable_scope(zero_state_scope, reuse=reuse):
-            #the batch_size has to be fixed in order to be able to corretly
-            #return the state_sizes, should self.state_size() be called before
-            #the zero states are created.
-            assert batch_size == self.las_model.batch_size
-            assert dtype == self.las_model.dtype
+        #the batch_size has to be fixed in order to be able to corretly
+        #return the state_sizes, should self.state_size() be called before
+        #the zero states are created.
+        assert batch_size == self.las_model.batch_size
+        assert dtype == self.las_model.dtype
 
-            #----------------------Create Variables---------------------------#
-            # setting up the decoder_RNN_states, character distribution
-            # and context vector variables.
-            zero_initializer = tf.constant_initializer(value=0)
-            pre_context_states = self.pre_context_rnn.get_zero_states(
-                batch_size, dtype)
-            post_context_states = self.post_context_rnn.get_zero_states(
-                batch_size, dtype)
+        #----------------------Create Zero state tensors---------------------------#
+        # setting up the decoder_RNN_states, character distribution
+        # and context vector variables.
+        pre_context_states = self.pre_context_rnn.get_zero_states(
+            batch_size, dtype)
+        post_context_states = self.post_context_rnn.get_zero_states(
+            batch_size, dtype)
 
-            # The character distribution must initially be the sos token.
-            # assuming encoding done as specified in the batch dispenser.
-            # 0: '>', 1: '<', 2:' ', ...
-            # initialize to start of sentence token '<' as one hot encoding:
-            # 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-            sos = np.zeros(self.las_model.target_label_no)
-            sos[1] = 1
-            sos_initializer = tf.constant_initializer(sos)
-            one_hot_char = tf.get_variable(
-                name='one_hot_char',
-                shape=[batch_size,
-                       self.las_model.target_label_no],
-                initializer=sos_initializer,
-                trainable=False, dtype=dtype)
-            # The identity operation Removes the _ref from dtype.
-            # This is required because get_variable creates _ref dtypes,
-            # while the zero states functions create normal dtypes.
-            # without the identity op the network unrolling chrashes.
-            one_hot_char = tf.identity(one_hot_char)
-            print("    one_hot_char shape:", tf.Tensor.get_shape(one_hot_char))
-            # The dimension of the context vector is determined by the listener
-            # output dimension.
-            context_vector = tf.get_variable(
-                name='context_vector',
-                shape=[batch_size,
-                       self.las_model.listen_output_dim],
-                initializer=zero_initializer,
-                trainable=False, dtype=dtype)
-            context_vector = tf.identity(context_vector)
-            print("  context_vector shape:",
-                  tf.Tensor.get_shape(context_vector))
-
-            #--------------------Create one hot char constants----------------#
-            ones_init = np.ones(self.las_model.batch_size)
-            self.ones = tf.constant(ones_init, dtype=dtype)
-            self.one_hot_char_shape = tf.constant(
-                [self.las_model.batch_size, self.las_model.target_label_no],
-                dtype=tf.int64)
-
+        # The character distribution must initially be the sos token.
+        # assuming encoding done as specified in the batch dispenser.
+        # 0: '>', 1: '<', 2:' ', ...
+        # initialize to start of sentence token '<' as one hot encoding:
+        # 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        sos_np = np.ones(batch_size, dtype=np.int32)
+        sos = tf.constant(sos_np, tf.int32, shape=[batch_size])
+        one_hot_char = tf.one_hot(sos, self.las_model.target_label_no,
+                                  axis=1, dtype=dtype)
+        print("    one_hot_char shape:", tf.Tensor.get_shape(one_hot_char))
+        # The dimension of the context vector is determined by the listener
+        # output dimension.
+        zero_context_np = np.zeros([batch_size,
+                                    self.las_model.listener.output_dim])
+        context_vector = tf.constant(zero_context_np, dtype) 
+        context_vector = tf.identity(context_vector)
+        print("  context_vector shape:",
+              tf.Tensor.get_shape(context_vector))
 
         return StateTouple(pre_context_states, post_context_states,
                            one_hot_char, context_vector)
@@ -395,19 +369,9 @@ class AttendAndSpellCell(RNNCell):
             # Run the argmax on the character dimension.
             # logits has dimensions [batch_size, num_labels]
             max_pos = tf.argmax(logits, 1, name='choose_max_prob_char')
-            max_pos_lst = tf.unpack(max_pos)
-            sparse_idx_lst = []
-            for batch_no, char_no in enumerate(max_pos_lst):
-                sparse_idx_lst.append([batch_no, char_no])
-            sparse_idx = tf.convert_to_tensor(sparse_idx_lst)
-            one_hot_char = tf.SparseTensor(sparse_idx,
-                                           self.ones,
-                                           self.one_hot_char_shape)
-            one_hot_char = tf.sparse_tensor_to_dense(one_hot_char)
-            #sparse_to_dense does not set the shape right.
-            #doing that manually.
-            np_shape = tf.contrib.util.constant_value(self.one_hot_char_shape)
-            one_hot_char.set_shape(np_shape)
+            debug_here()
+            one_hot_char = tf.one_hot(max_pos, self.las_model.target_label_no,
+                                      axis=1)
 
             # pack everything up in structures which allow the
             # tensorflow unrolling functions to do their data-type checking.

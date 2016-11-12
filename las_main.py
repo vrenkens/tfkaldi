@@ -18,6 +18,10 @@ from processing.target_normalizers import aurora4_char_norm
 from processing.target_coder import TextEncoder
 from processing.feature_reader import FeatureReader
 from neuralnetworks.classifiers.las_model import LasModel
+from neuralnetworks.classifiers.las_model import GeneralSettings
+from neuralnetworks.classifiers.las_model import ListenerSettings
+from neuralnetworks.classifiers.las_model import AttendAndSpellSettings
+
 from neuralnetworks.trainer import LasTrainer
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
@@ -57,7 +61,7 @@ MOMENTUM = 0.9
 OMEGA = 0.001 #weight regularization term.
 #LEARNING_RATE = 0.0001       #too low?
 #MOMENTUM = 0.6              #play with this.
-MAX_N_EPOCHS = 600
+MAX_N_EPOCHS = 1
 OVERFIT_TOL = 99999
 
 ####Network Parameters
@@ -69,14 +73,14 @@ AURORA_LABELS = 32
 AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
-MAX_BATCH_SIZE = 128
+MAX_BATCH_SIZE = 64
 #askoy
-if 1:
+if 0:
     UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
     DEVICE = '/gpu:0'
 #spchcl22
-if 0:
-    UTTERANCES_PER_MINIBATCH = 64 #time vs memory tradeoff.
+if 1:
+    UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
     DEVICE = None
 
 MEL_FEATURE_NO = 40
@@ -104,8 +108,16 @@ n_classes = AURORA_LABELS
 
 test_batch = test_dispenser.get_batch()
 #create the las arcitecture
-las_model = LasModel(MEL_FEATURE_NO, UTTERANCES_PER_MINIBATCH,
-                     AURORA_LABELS)
+
+#mel_feature_no, mini_batch_size, target_label_no, dtype
+general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
+                                   AURORA_LABELS, tf.float32)
+#lstm_dim, plstm_layer_no, output_dim, out_weights_std
+listener_settings = ListenerSettings(256, 3, 256, 0.1)
+#decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
+attend_and_spell_settings = AttendAndSpellSettings(512, 512, 3)
+las_model = LasModel(general_settings, listener_settings,
+                     attend_and_spell_settings)
 
 #las_trainer = LasTrainer(las_model, LEARNING_RATE, OMEGA)
 
@@ -117,18 +129,10 @@ max_target_length = np.max([train_dispenser.max_target_length,
                             val_dispenser.max_target_length,
                             test_dispenser.max_target_length])
 
-if DEVICE is not None:
-    with tf.device(DEVICE):
-        las_trainer = LasTrainer(
-            las_model, n_features, max_input_length, max_target_length,
-            LEARNING_RATE, LEARNING_RATE_DECAY, MAX_N_EPOCHS,
-            UTTERANCES_PER_MINIBATCH)
-
-else:
-    las_trainer = LasTrainer(
-        las_model, n_features, max_input_length, max_target_length,
-        LEARNING_RATE, LEARNING_RATE_DECAY, MAX_N_EPOCHS,
-        UTTERANCES_PER_MINIBATCH)
+las_trainer = LasTrainer(
+    las_model, n_features, max_input_length, max_target_length,
+    LEARNING_RATE, LEARNING_RATE_DECAY, MAX_N_EPOCHS,
+    UTTERANCES_PER_MINIBATCH)
 
 
 print('\x1b[01;32m' + "--- Graph generation done. --- time since start [min]",
@@ -219,12 +223,13 @@ with tf.Session(graph=las_trainer.graph, config=config):
     test_loss = las_trainer.evaluate(inputs, targets)
     print("test loss: ", test_loss)
 
-filename = "saved/savedValsLasAdam." \
+filename = "saved_models/" \
            + socket.gethostname() \
            + '-' + today \
            + ".pkl"
 pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE,
-             MOMENTUM, OMEGA, epoch], open(filename, "wb"))
+             MOMENTUM, OMEGA, epoch, general_settings, listener_settings,
+             attend_and_spell_settings], open(filename, "wb"))
 print("plot values saved at: " + filename)
 
 plt.plot(np.array(epoch_loss_lst))

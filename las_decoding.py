@@ -6,10 +6,6 @@
 # fix the pylint import problem.
 # pylint: disable=E0401
 
-import time
-import datetime
-import pickle
-import socket
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
@@ -21,7 +17,7 @@ from neuralnetworks.classifiers.las_model import LasModel
 from neuralnetworks.decoder import LasDecoder
 from IPython.core.debugger import Tracer; debug_here = Tracer()
 
-start_time = time.time()
+
 
 def generate_dispenser(data_path, set_kind, label_no, batch_size, phonemes):
     """ Instatiate a batch dispenser object using the data
@@ -106,23 +102,21 @@ config.gpu_options.allow_growth = True
 with tf.Session(graph=las_decoder.graph, config=config):
 
     las_decoder.restore(
-        'saved_models/spchcl23.esat.kuleuven.be/-2016-11-10.mdl',
-        )
+        'saved_models/spchcl23.esat.kuleuven.be/2016-11-12.mdl')
 
     test_batch = test_dispenser.get_batch()
     inputs = test_batch[0]
     targets = test_batch[1]
-
     decoded = las_decoder(inputs)
 
 
 def greedy_search(network_output):
     """ Extract the largets char probability."""
     utterance_char_batches = []
-    for i in range(0, network_output.shape[0]):
+    for batch in range(0, network_output.shape[0]):
         utterance_chars_nos = []
-        for t in range(0, network_output.shape[1]):
-            utterance_chars_nos.append(np.argmax(network_output[i, t, :]))
+        for time in range(0, network_output.shape[1]):
+            utterance_chars_nos.append(np.argmax(network_output[batch, time, :]))
         utterance_chars = test_dispenser.target_coder.decode(
             utterance_chars_nos)
         utterance_char_batches.append(utterance_chars)
