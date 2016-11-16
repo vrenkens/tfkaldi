@@ -210,14 +210,7 @@ class AttendAndSpellCell(RNNCell):
         a TensorShape or a tuple of Integers
         or TensorShapes.
         """
-        return StateTouple([self.las_model.batch_size,
-                            self.dec_state_size],
-                           [self.las_model.batch_size,
-                            self.las_model.target_label_no],
-                           [self.las_model.batch_size,
-                            self.las_model.target_label_no],
-                           [self.las_model.batch_size,
-                            self.las_model.listener.output_dim])
+        return self.zero_state(self.las_model.batch_size, self.las_model.dtype).get_shape()
 
     def zero_state(self, batch_size, dtype):
         """Return an initial state for the Attend and state cell.
@@ -411,10 +404,12 @@ class RNN(object):
         self.layer_number = 1
         #create the two required LSTM blocks.
         self.blocks = []
+        lstm_init = tf.random_uniform_initializer(minval=-0.1, maxval=0.1)
         for _ in range(0, self.layer_number):
             self.blocks.append(rnn_cell.LSTMCell(lstm_dim,
                                                  use_peepholes=True,
-                                                 state_is_tuple=True))
+                                                 state_is_tuple=True,
+                                                 initializer=lstm_init))
         self.wrapped_cells = rnn_cell.MultiRNNCell(self.blocks,
                                                    state_is_tuple=True)
         self.reuse = None

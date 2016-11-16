@@ -49,10 +49,14 @@ def generate_dispenser(data_path, set_kind, label_no, batch_size):
 #LEARNING_RATE = 0.0008
 LEARNING_RATE = 0.0001
 LEARNING_RATE_DECAY = 0.98
+<<<<<<< HEAD
 MOMENTUM = 0.9
 #LEARNING_RATE = 0.0001       #too low?
 #MOMENTUM = 0.6              #play with this.
 
+=======
+MAX_N_EPOCHS = 0
+>>>>>>> 126a8f49d9b5c2eacf8aaa089b7803c3a167c25b
 OVERFIT_TOL = 99999
 
 ####Network Parameters
@@ -128,6 +132,21 @@ n_classes = AURORA_LABELS
 test_batch = test_dispenser.get_batch()
 #create the las arcitecture
 
+#mel_feature_no, mini_batch_size, target_label_no, dtype
+general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
+                                   AURORA_LABELS, tf.float32)
+
+listener_settings = ListenerSettings(lstm_dim=56, plstm_layer_no=3, output_dim=40,
+                                     out_weights_std=0.1)
+
+#TODO: 3 hidden layers good choice????
+attend_and_spell_settings = AttendAndSpellSettings(decoder_state_size=56,
+                                                   feedforward_hidden_units=56,
+                                                   feedforward_hidden_layers=3)
+las_model = LasModel(general_settings, listener_settings,
+                     attend_and_spell_settings)
+
+
 max_input_length = np.max([train_dispenser.max_input_length,
                            val_dispenser.max_input_length,
                            test_dispenser.max_input_length])
@@ -152,7 +171,7 @@ epoch = 0
 epoch_loss_lst = []
 epoch_loss_lst_val = []
 
-las_trainer.start_visualization('log/' + socket.gethostname() )
+las_trainer.start_visualization('log/' + socket.gethostname())
 #start a tensorflow session
 config = tf.ConfigProto()
 #pylint does not get the tensorflow object members right.
@@ -233,13 +252,13 @@ with tf.Session(graph=las_trainer.graph, config=config):
     print("test loss: ", test_loss)
 
 filename = "saved_models/" \
-           + socket.gethostname() \
-           + '-' + today \
+           + socket.gethostname() + "/"  \
+           + today \
            + ".pkl"
-pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE,
-             MOMENTUM, OMEGA, epoch, general_settings, listener_settings,
-             attend_and_spell_settings], open(filename, "wb"))
-print("plot values saved at: " + filename)
+pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE, 
+             LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH, general_settings,
+             listener_settings, attend_and_spell_settings], open(filename, "wb"))
+print("plot and parameter values pickled at: " + filename)
 
 plt.plot(np.array(epoch_loss_lst))
 plt.plot(np.array(epoch_loss_lst_val))
