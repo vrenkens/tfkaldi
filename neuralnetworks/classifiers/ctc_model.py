@@ -1,3 +1,4 @@
+#A ctc model which will be used to verify the input code.
 '''
 This module implements a listen attend and spell classifier.
 '''
@@ -22,9 +23,6 @@ ListenerSettings = collections.namedtuple(
     "ListenerSettings",
     "lstm_dim, plstm_layer_no, output_dim, out_weights_std")
 
-AttendAndSpellSettings = collections.namedtuple(
-    "AttendAndSpellSettings",
-    "decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers")
 
 class LasModel(Classifier):
     """ A neural end to end network based speech model."""
@@ -63,17 +61,11 @@ class LasModel(Classifier):
         #store the two model parts.
         self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no, 
                                  self.lst_set.output_dim, self.lst_set.out_weights_std)
-        self.attend_and_spell_cell = AttendAndSpellCell(
-            self, self.as_set.decoder_state_size,
-            self.as_set.feedforward_hidden_units,
-            self.as_set.feedforward_hidden_layers)
-
 
     def __call__(self, inputs, seq_length, is_training=False, reuse=True,
                  scope=None, targets=None, target_seq_length=None):
 
-
-        print('\x1b[01;32m' + "Adding LAS conputations:")
+        print('\x1b[01;32m' + "Adding LAS computations:")
         print("    training_graph:", is_training)
         print("    decoding_graph:", self.decoding, '\x1b[0m')
 
@@ -101,62 +93,6 @@ class LasModel(Classifier):
             print('adding listen computations to the graph...')
             high_level_features = self.listener(inputs,
                                                 seq_length)
-
-
-            if self.decoding is not True:
-                print('adding attend and spell computations to the graph...')
-                #training mode
-
-
-                self.attend_and_spell_cell.set_features(high_level_features)
-                zero_state = self.attend_and_spell_cell.zero_state(
-                    self.batch_size, self.dtype)
-                logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
-                                              inputs=target_one_hot,
-                                              initial_state=zero_state,
-                                              time_major=False,
-                                              scope='attend_and_spell')
-            else:
-                print('adding attend and spell computations to the graph...')
-
-                self.attend_and_spell_cell.set_features(high_level_features)
-                cell_state = self.attend_and_spell_cell.zero_state(
-                    self.batch_size, self.dtype)
-
-                with tf.variable_scope('attend_and_spell'):
-                    _, _, one_hot_char, _ = cell_state
-                    logits = tf.expand_dims(one_hot_char, 1)
-
-                    #zero_init = tf.constant_initializer(0)
-                    #time = tf.get_variable('time',
-                    #                       shape=[],
-                    #                       dtype=self.dtype,
-                    #                      trainable=False,
-                    #                      initializer=zero_init)
-                    time = tf.constant(0, self.dtype, shape=[])
-
-                    #turn time from a variable into a tensor.
-                    time = tf.identity(time)
-                    loop_vars = DecodingTouple(logits, cell_state, time)
-
-                    #set up the shape invariants for the while loop.
-                    shape_invariants = loop_vars.get_shape()
-                    flat_invariants = nest.flatten(shape_invariants)
-                    flat_invariants[0] = tf.TensorShape([self.batch_size,
-                                                         None,
-                                                         self.target_label_no])
-                    shape_invariants = nest.pack_sequence_as(shape_invariants,
-                                                             flat_invariants)
-
-
-                    result = tf.while_loop(
-                        self.cond, self.body, loop_vars=[loop_vars],
-                        shape_invariants=[shape_invariants])
-                    logits, cell_state, time = result[0]
-
-            # The saver can be used to restore the variables in the graph
-            # from file later.
-            saver = tf.train.Saver()
 
         print("Logits tensor shape:", tf.Tensor.get_shape(logits))
 

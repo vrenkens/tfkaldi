@@ -13,7 +13,7 @@ from IPython.core.debugger import Tracer; debug_here = Tracer()
 ## Class that dispenses batches of data for mini-batch training
 class BatchDispenser(object):
     ''' BatchDispenser interface cannot be created but gives methods to its
-    child classes.'''
+    child classes. '''
     __metaclass__ = ABCMeta
 
     @abstractmethod
@@ -228,3 +228,29 @@ class AlignmentBatchDispenser(BatchDispenser):
                 target_dict[splitline[0]] = ' '.join(splitline[1:])
 
         return target_dict
+
+
+class PhonemeBatchDispenser(BatchDispenser):
+    '''a batch dispenser, which uses text targets.'''
+
+    def read_target_file(self, target_path):
+        '''
+        read the file containing the text sequences
+
+        Args:
+            target_path: path to the text file
+
+        Returns:
+            A dictionary containing
+                - Key: Utterance ID
+                - Value: The target sequence as a string
+        '''
+
+        target_dict = {}
+        with open(target_path, 'r') as fid:
+            for line in fid:
+                splitline = line.strip().split(' ')
+                target_dict[splitline[0]] = ' '.join(splitline[1:])
+
+        return target_dict
+        

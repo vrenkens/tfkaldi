@@ -22,10 +22,8 @@ class TargetCoder(object):
 
         #save the normalizer
         self.target_normalizer = target_normalizer
-
         #create an alphabet of possible targets
         alphabet = self.create_alphabet()
-
         #create a lookup dictionary for fast encoding
         self.lookup = {character:index for index, character
                        in enumerate(alphabet)}
@@ -40,7 +38,7 @@ class TargetCoder(object):
         encode a target sequence
 
         Args:
-            targets: a list containing the target sequence
+            targets: a string containing the target sequence
 
         Returns:
             A numpy array containing the encoded targets
@@ -61,6 +59,7 @@ class TargetCoder(object):
 
         for target in normalized_targets:
             encoded_targets.append(self.lookup[target])
+
         return np.array(encoded_targets, dtype=np.uint32)
 
     def decode(self, encoded_targets):
@@ -166,6 +165,20 @@ class AlignmentCoder(TargetCoder):
 
         return alphabet
 
-#TODO port from las.
-class PhonemeCoder(TargetCoder):
-    """ Encode phonemes as described in ...."""
+
+class PhonemeEncoder(TargetCoder):
+    """ Sets up a 39 element foldet phoneme alphabet."""
+
+    def create_alphabet(self):
+        """
+        Create an alphabet of folded phonemes, according to 
+        "Speaker-Independent Phone Recognition Using Hidden Markov Models."
+        """
+
+        #TODO: Think about sos '<' and eos '>' tokens. 
+        alphabet = ['aa', 'ae', 'ah', 'aw', 'ay', 'b', 'ch', 'd', 'dh', 'dx', 
+                    'eh', 'er', 'ey', 'f', 'g', 'hh', 'ih', 'iy', 'jh', 'k', 
+                    'l', 'm', 'n', 'ng', 'ow', 'oy', 'p', 'r', 's', 'sh', 'sil', 
+                    't', 'th', 'uh', 'uw', 'v', 'w', 'y', 'z']
+
+        return alphabet

@@ -229,32 +229,34 @@ class AttendAndSpellCell(RNNCell):
         assert batch_size == self.las_model.batch_size
         assert dtype == self.las_model.dtype
 
-        #----------------------Create Zero state tensors---------------------------#
-        # setting up the decoder_RNN_states, character distribution
-        # and context vector variables.
-        pre_context_states = self.pre_context_rnn.get_zero_states(
-            batch_size, dtype)
-        post_context_states = self.post_context_rnn.get_zero_states(
-            batch_size, dtype)
+        zero_state_scope = type(self).__name__+ "_zero_state"
+        with tf.variable_scope(zero_state_scope):
+            #----------------------Create Zero state tensors---------------------------#
+            # setting up the decoder_RNN_states, character distribution
+            # and context vector variables.
+            pre_context_states = self.pre_context_rnn.get_zero_states(
+                batch_size, dtype)
+            post_context_states = self.post_context_rnn.get_zero_states(
+                batch_size, dtype)
 
-        # The character distribution must initially be the sos token.
-        # assuming encoding done as specified in the batch dispenser.
-        # 0: '>', 1: '<', 2:' ', ...
-        # initialize to start of sentence token '<' as one hot encoding:
-        # 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-        sos_np = np.ones(batch_size, dtype=np.int32)
-        sos = tf.constant(sos_np, tf.int32, shape=[batch_size])
-        one_hot_char = tf.one_hot(sos, self.las_model.target_label_no,
-                                  axis=1, dtype=dtype)
-        print("    one_hot_char shape:", tf.Tensor.get_shape(one_hot_char))
-        # The dimension of the context vector is determined by the listener
-        # output dimension.
-        zero_context_np = np.zeros([batch_size,
-                                    self.las_model.listener.output_dim])
-        context_vector = tf.constant(zero_context_np, dtype) 
-        context_vector = tf.identity(context_vector)
-        print("  context_vector shape:",
-              tf.Tensor.get_shape(context_vector))
+            # The character distribution must initially be the sos token.
+            # assuming encoding done as specified in the batch dispenser.
+            # 0: '>', 1: '<', 2:' ', ...
+            # initialize to start of sentence token '<' as one hot encoding:
+            # 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+            sos_np = np.ones(batch_size, dtype=np.int32)
+            sos = tf.constant(sos_np, tf.int32, shape=[batch_size])
+            one_hot_char = tf.one_hot(sos, self.las_model.target_label_no,
+                                      axis=1, dtype=dtype)
+            print("    one_hot_char shape:", tf.Tensor.get_shape(one_hot_char))
+            # The dimension of the context vector is determined by the listener
+            # output dimension.
+            zero_context_np = np.zeros([batch_size,
+                                        self.las_model.listener.output_dim])
+            context_vector = tf.constant(zero_context_np, dtype) 
+            context_vector = tf.identity(context_vector)
+            print("  context_vector shape:",
+                  tf.Tensor.get_shape(context_vector))
 
         return StateTouple(pre_context_states, post_context_states,
                            one_hot_char, context_vector)
@@ -369,7 +371,6 @@ class AttendAndSpellCell(RNNCell):
             # Run the argmax on the character dimension.
             # logits has dimensions [batch_size, num_labels]
             max_pos = tf.argmax(logits, 1, name='choose_max_prob_char')
-            debug_here()
             one_hot_char = tf.one_hot(max_pos, self.las_model.target_label_no,
                                       axis=1)
 
@@ -460,10 +461,8 @@ class FeedForwardNetwork(object):
 
         #create the layers
         self.layers = [None]*(dimension.num_hidden_layers + 1)
-        #input layer
-        self.layers[0] = FFLayer(dimension.num_hidden_units, activation)
-        #hidden layers
-        for k in range(1, len(self.layers)-1):
+        #input layer and hidden layers
+        for k in range(0, len(self.layers)-1):
             self.layers[k] = FFLayer(dimension.num_hidden_units, activation)
         #output layer
         self.layers[-1] = FFLayer(dimension.output_dim, activation)

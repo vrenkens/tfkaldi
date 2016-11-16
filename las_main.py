@@ -27,7 +27,7 @@ from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 start_time = time.time()
 
-def generate_dispenser(data_path, set_kind, label_no, batch_size, phonemes):
+def generate_dispenser(data_path, set_kind, label_no, batch_size):
     """ Instatiate a batch dispenser object using the data
         at the spcified path locations"""
     feature_path = data_path + set_kind + "/" + "feats.scp"
@@ -36,32 +36,23 @@ def generate_dispenser(data_path, set_kind, label_no, batch_size, phonemes):
     text_path = data_path + set_kind + "/" + "text"
     feature_reader = FeatureReader(feature_path, cmvn_path, utt2spk_path,
                                    0, max_time_steps)
-    if phonemes is True:
-      pass
-    #    dispenser = PhonemeTextDispenser(feature_reader, batch_size,
-    #                                     text_path, label_no,
-    #                                     max_time_steps,
-    #                                      one_hot_encoding=True)
-    else:
-      #Create the las encoder.
-        target_coder = TextEncoder(aurora4_char_norm)
-        dispenser = TextBatchDispenser(feature_reader,
-                                       target_coder,
-                                       batch_size,
-                                       text_path)
+    #Create the las encoder.
+    target_coder = TextEncoder(aurora4_char_norm)
+    dispenser = TextBatchDispenser(feature_reader,
+                                   target_coder,
+                                   batch_size,
+                                   text_path)
     return dispenser
 
 
 ###Learning Parameters
 #LEARNING_RATE = 0.0008
-LEARNING_RATE = 0.0008
-LEARNING_RATE_DECAY = 1
+LEARNING_RATE = 0.0001
+LEARNING_RATE_DECAY = 0.98
 MOMENTUM = 0.9
-#OMEGA = 0.000 #weight regularization term.
-OMEGA = 0.001 #weight regularization term.
 #LEARNING_RATE = 0.0001       #too low?
 #MOMENTUM = 0.6              #play with this.
-MAX_N_EPOCHS = 1
+
 OVERFIT_TOL = 99999
 
 ####Network Parameters
@@ -73,20 +64,48 @@ AURORA_LABELS = 32
 AURORA_PATH = "/esat/spchtemp/scratch/moritz/dataSets/aurora/"
 TRAIN = "/train/40fbank"
 PHONEMES = False
-MAX_BATCH_SIZE = 64
+
 #askoy
-if 0:
-    UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
-    DEVICE = '/gpu:0'
-#spchcl22
 if 1:
+    MAX_N_EPOCHS = 600
+    MAX_BATCH_SIZE = 30
+    UTTERANCES_PER_MINIBATCH = 2 #time vs memory tradeoff.
+    #mel_feature_no, mini_batch_size, target_label_no, dtype
+    general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
+                                       AURORA_LABELS, tf.float32)
+    #lstm_dim, plstm_layer_no, output_dim, out_weights_std
+    listener_settings = ListenerSettings(56, 3, 56, 0.1)
+    #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
+    attend_and_spell_settings = AttendAndSpellSettings(128, 128, 3)
+#spchcl22
+if 0:
+    MAX_N_EPOCHS = 600
+    MAX_BATCH_SIZE = 64
     UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
     DEVICE = None
+    general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
+                                       AURORA_LABELS, tf.float32)
+    #lstm_dim, plstm_layer_no, output_dim, out_weights_std
+    listener_settings = ListenerSettings(256, 3, 256, 0.1)
+    #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
+    attend_and_spell_settings = AttendAndSpellSettings(512, 512, 3)
+#spchcl23
+if 0:
+    MAX_N_EPOCHS = 300
+    MAX_BATCH_SIZE = 128
+    UTTERANCES_PER_MINIBATCH = 64 #time vs memory tradeoff.
+    MAX_N_EPOCHS = 600
+    #mel_feature_no, mini_batch_size, target_label_no, dtype
+    general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
+                                       AURORA_LABELS, tf.float32)
+    #lstm_dim, plstm_layer_no, output_dim, out_weights_std
+    listener_settings = ListenerSettings(56, 3, 56, 0.1)
+    #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
+    attend_and_spell_settings = AttendAndSpellSettings(128, 128, 3)
+
+
 
 MEL_FEATURE_NO = 40
-
-
-
 
 train_dispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
                                      MAX_BATCH_SIZE, PHONEMES)
@@ -109,18 +128,6 @@ n_classes = AURORA_LABELS
 test_batch = test_dispenser.get_batch()
 #create the las arcitecture
 
-#mel_feature_no, mini_batch_size, target_label_no, dtype
-general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
-                                   AURORA_LABELS, tf.float32)
-#lstm_dim, plstm_layer_no, output_dim, out_weights_std
-listener_settings = ListenerSettings(256, 3, 256, 0.1)
-#decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
-attend_and_spell_settings = AttendAndSpellSettings(512, 512, 3)
-las_model = LasModel(general_settings, listener_settings,
-                     attend_and_spell_settings)
-
-#las_trainer = LasTrainer(las_model, LEARNING_RATE, OMEGA)
-
 max_input_length = np.max([train_dispenser.max_input_length,
                            val_dispenser.max_input_length,
                            test_dispenser.max_input_length])
@@ -129,11 +136,13 @@ max_target_length = np.max([train_dispenser.max_target_length,
                             val_dispenser.max_target_length,
                             test_dispenser.max_target_length])
 
+las_model = LasModel(general_settings, listener_settings,
+                     attend_and_spell_settings)
+
 las_trainer = LasTrainer(
     las_model, n_features, max_input_length, max_target_length,
     LEARNING_RATE, LEARNING_RATE_DECAY, MAX_N_EPOCHS,
     UTTERANCES_PER_MINIBATCH)
-
 
 print('\x1b[01;32m' + "--- Graph generation done. --- time since start [min]",
      (time.time() - start_time)/60.0, '\x1b[0m')

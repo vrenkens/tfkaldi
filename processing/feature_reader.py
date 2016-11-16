@@ -29,7 +29,10 @@ class FeatureReader(object):
         self.reader = ark.ArkReader(scp_path)
 
         #create a reader for the cmvn statistics
-        self.reader_cmvn = ark.ArkReader(cmvn_path)
+        if cmvn_path != None:
+            self.reader_cmvn = ark.ArkReader(cmvn_path)
+        else:
+            self.reader_cmvn = None
 
         #save the utterance to speaker mapping
         self.utt2spk = readfiles.read_utt2spk(utt2spk_path)
@@ -45,6 +48,36 @@ class FeatureReader(object):
     def get_utt(self):
         '''
         read the next features from the archive, normalize and splice them
+
+        TODO: Write a timit feature generation script, which generates a cmvn file
+              and remove this note.
+
+        Returns:
+            the normalized and spliced features
+        '''
+        if self.reader_cmvn is not None:
+            return self.get_utt_aurora()
+        else:
+            return self.get_utt_timit()
+
+
+    def get_utt_timit(self):
+        '''
+        read the next features from the archive and normalize them.
+
+        Returns:
+            the normalized and spliced features.
+        '''
+
+        #read utterance
+        (utt_id, utt_mat, looped) = self.reader.read_next_utt()
+
+        return utt_id, normalize_utt_mat(utt_mat), looped
+
+
+    def get_utt_aurora(self):
+        '''
+        read the next features from the archive, normalize and splice them on aurora.
 
         Returns:
             the normalized and spliced features
@@ -165,3 +198,12 @@ def splice(utt, context_width):
                     (context_width+i+2)*utt.shape[1]] = utt[i+1:utt.shape[0], :]
 
     return utt_spliced
+
+
+def normalize_utt_mat(input_array):
+    '''
+    TODO: Use apply CMVN instead and remove this function.
+    '''
+    zero_mean = input_array - np.mean(input_array)
+    std_one_zero_mean = zero_mean/np.std(zero_mean)
+    return std_one_zero_mean
