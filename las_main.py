@@ -49,15 +49,6 @@ def generate_dispenser(data_path, set_kind, label_no, batch_size):
 #LEARNING_RATE = 0.0008
 LEARNING_RATE = 0.0001
 LEARNING_RATE_DECAY = 0.98
-<<<<<<< HEAD
-MOMENTUM = 0.9
-#LEARNING_RATE = 0.0001       #too low?
-#MOMENTUM = 0.6              #play with this.
-
-=======
-MAX_N_EPOCHS = 0
->>>>>>> 126a8f49d9b5c2eacf8aaa089b7803c3a167c25b
-OVERFIT_TOL = 99999
 
 ####Network Parameters
 n_features = 40
@@ -70,7 +61,7 @@ TRAIN = "/train/40fbank"
 PHONEMES = False
 
 #askoy
-if 1:
+if 0:
     MAX_N_EPOCHS = 600
     MAX_BATCH_SIZE = 30
     UTTERANCES_PER_MINIBATCH = 2 #time vs memory tradeoff.
@@ -93,17 +84,17 @@ if 0:
     listener_settings = ListenerSettings(256, 3, 256, 0.1)
     #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
     attend_and_spell_settings = AttendAndSpellSettings(512, 512, 3)
-#spchcl23
-if 0:
-    MAX_N_EPOCHS = 300
+#spchcl21
+if 1:
+    MAX_N_EPOCHS = 1800
     MAX_BATCH_SIZE = 128
     UTTERANCES_PER_MINIBATCH = 64 #time vs memory tradeoff.
-    MAX_N_EPOCHS = 600
+
     #mel_feature_no, mini_batch_size, target_label_no, dtype
     general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
                                        AURORA_LABELS, tf.float32)
     #lstm_dim, plstm_layer_no, output_dim, out_weights_std
-    listener_settings = ListenerSettings(56, 3, 56, 0.1)
+    listener_settings = ListenerSettings(64, 3, 64, 0.1)
     #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
     attend_and_spell_settings = AttendAndSpellSettings(128, 128, 3)
 
@@ -112,13 +103,13 @@ if 0:
 MEL_FEATURE_NO = 40
 
 train_dispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
-                                     MAX_BATCH_SIZE, PHONEMES)
+                                     MAX_BATCH_SIZE)
 TEST = "test/40fbank"
 val_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                   MAX_BATCH_SIZE, PHONEMES)
+                                   MAX_BATCH_SIZE)
 
 test_dispenser = generate_dispenser(AURORA_PATH, TEST, AURORA_LABELS,
-                                    MAX_BATCH_SIZE, PHONEMES)
+                                    MAX_BATCH_SIZE)
 
 test_feature_reader = val_dispenser.split_reader(606)
 test_dispenser.feature_reader = test_feature_reader
@@ -132,17 +123,6 @@ n_classes = AURORA_LABELS
 test_batch = test_dispenser.get_batch()
 #create the las arcitecture
 
-#mel_feature_no, mini_batch_size, target_label_no, dtype
-general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
-                                   AURORA_LABELS, tf.float32)
-
-listener_settings = ListenerSettings(lstm_dim=56, plstm_layer_no=3, output_dim=40,
-                                     out_weights_std=0.1)
-
-#TODO: 3 hidden layers good choice????
-attend_and_spell_settings = AttendAndSpellSettings(decoder_state_size=56,
-                                                   feedforward_hidden_units=56,
-                                                   feedforward_hidden_layers=3)
 las_model = LasModel(general_settings, listener_settings,
                      attend_and_spell_settings)
 
@@ -214,6 +194,22 @@ with tf.Session(graph=las_trainer.graph, config=config):
                   + "-----  validation loss: ", validation_loss,
                   '\x1b[0m')
             epoch_loss_lst_val.append(validation_loss)
+
+
+        if epoch%100 == 0:
+            print('\x1b[01;32m' + 'saving the model...' + '\x1b[0m')
+            today = str(datetime.datetime.now()).split(' ')[0]
+            filename = "saved_models/" \
+                       + socket.gethostname() + "/"  \
+                       + today \
+                       + ".mdl"
+            las_trainer.save_model(filename)
+            print("Model saved in file: %s" % filename)
+
+            #run the network on the test data set.
+            inputs, targets = test_dispenser.get_batch()
+            test_loss = las_trainer.evaluate(inputs, targets)
+            print("test loss: ", test_loss)
 
         # if the training error is lower than the validation error for
         # interval iterations stop..

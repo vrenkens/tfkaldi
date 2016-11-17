@@ -21,6 +21,7 @@ from IPython.core.debugger import Tracer; debug_here = Tracer();
 #disable the too few public methods complaint
 # pylint: disable=R0903
 
+
 class Listener(object):
     """
     A set of pyramidal blstms, which compute high level audio features.
@@ -63,7 +64,7 @@ class Listener(object):
             output_values = self.linear_output_layer(hidden_values, scope)
         if self.reuse is None:
             self.reuse = True
-        return output_values
+        return output_values, sequence_lengths
 
     def linear_output_layer(self, hidden_values, scope):
         """ Run the concatenated forward and backward layer computations trough
@@ -72,11 +73,13 @@ class Listener(object):
             Graves, A, Mohamed, A.-R., Hinton, G
         """
         reuse = None or self.reuse
-        scope = type(self).__name__ + "_linear_output_layer"
+        scope = type(self).__name__ + "linear_layer"
         with tf.variable_scope(scope, reuse=reuse):
-            hidden_values_lst = tf.unpack(hidden_values, axis=1)
+            hidden_time = tf.Tensor.get_shape(hidden_values)[1]
             output_values_lst = []
-            for output_value in hidden_values_lst:
+            #TODO: Test.
+            for time in range(int(hidden_time)):
+                output_value = hidden_values[:, time, :]
                 output_values_lst.append(self.output_layer(
                     output_value, reuse=reuse, scope=scope))
                 if reuse is None:

@@ -148,7 +148,7 @@ class Trainer(object):
                 self.init_grads = tf.initialize_variables(grads)
 
                 #the operation to initialise the batch loss
-                 #pylint: disable=E1101
+                #pylint: disable=E1101
                 self.init_loss = batch_loss.initializer
 
                 #the operation to initialize the num_frames
@@ -367,7 +367,6 @@ class Trainer(object):
 
         return batch_inputs, batch_targets, batch_input_seq_length, \
                batch_output_seq_length
-
 
 
     def update(self, inputs, targets):
@@ -604,6 +603,11 @@ class CrossEnthropyTrainer(Trainer):
             return tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(
                 nonseq_logits, nonseq_targets))
 
+
+
+
+
+
 class CTCTrainer(Trainer):
     '''A trainer that minimises the CTC loss, the output sequences'''
 
@@ -629,16 +633,30 @@ class CTCTrainer(Trainer):
             a scalar value containing the loss
         '''
 
-        #get the batch size
-        batch_size = int(target_seq_length.get_shape()[0])
+        idx, vals, shape = self.target_tensor_to_sparse(targets, target_seq_length)
+        sparse_targets = tf.cast(tf.SparseTensor(idx, vals, shape), tf.int32)
+        debug_here()
+        return tf.reduce_sum(tf.nn.ctc_loss(tf.pack(logits), sparse_targets,
+                       logit_seq_length, time_major=False))
 
-        #convert the targets into a sparse tensor representation
-        indices = tf.concat(0, [tf.concat(1, [tf.tile([s], target_seq_length[s])
-                                              , tf.range(target_seq_length[s])])
-                                for s in range(len(batch_size))])
-        values = tf.reshape(seq_convertors.seq2nonseq(logits, logit_seq_length),
-                            [-1])
-        shape = [batch_size, len(targets)]
-        sparse_targets = tf.SparseTensor(indices, values, shape)
 
-        tf.nn.ctc_loss(tf.pack(logits), sparse_targets, logit_seq_length)
+    def target_tensor_to_sparse(self, target_tensor, target_seq_length):
+        '''Make tensorflow SparseTensor from target tensor of shape 
+           [numutterances_per_minibatch, max_target_length, 1] with each element
+           in the list being a list or array with the values of the target sequence
+           (e.g., the integer values of a character map for an ASR target string)
+        '''
+        target_tensor = tf.squeeze(target_tensor)
+        #target_list = tf.unpack(target_tensor)
+        zero = tf.constant(0, dtype=tf.int32)
+        non_zero_mask = tf.not_equal(tf.cast(target_tensor, tf.int32), zero)  
+        indices = tf.where(non_zero_mask)   
+        vals = tf.boolean_mask(target_tensor, non_zero_mask)
+        shape = [self.numutterances_per_minibatch, self.max_target_length]
+        
+        idx = tf.cast(tf.convert_to_tensor(indices), tf.int64)
+        vls = tf.cast(tf.convert_to_tensor(vals), tf.int64)
+        shp = tf.cast(tf.convert_to_tensor(shape), tf.int64)
+        debug_here()
+        return idx, vls, shp
+

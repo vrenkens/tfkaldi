@@ -6,7 +6,6 @@ This module implements a listen attend and spell classifier.
 import sys
 import collections
 import tensorflow as tf
-from tensorflow.python.util import nest
 
 # we are currenly in neuralnetworks, add it to the path.
 sys.path.append("neuralnetworks")
@@ -23,7 +22,7 @@ ListenerSettings = collections.namedtuple(
     "ListenerSettings",
     "lstm_dim, plstm_layer_no, output_dim, out_weights_std")
 
-class listener_model(Classifier):
+class ListenerModel(Classifier):
     """ A neural end to end network based speech model."""
 
     def __init__(self, general_settings, listener_settings, decoding=False):
@@ -41,7 +40,7 @@ class listener_model(Classifier):
             decoding: Boolean flag indicating if this graph is going to be
                       used for decoding purposes.
         """
-        super(listener_model, self).__init__(general_settings.target_label_no)
+        super(ListenerModel, self).__init__(general_settings.target_label_no)
         self.gen_set = general_settings
         self.lst_set = listener_settings
 
@@ -72,13 +71,13 @@ class listener_model(Classifier):
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
-            high_level_features = self.listener(inputs,
+            high_level_features, seq_length = self.listener(inputs,
                                                 seq_length)
 
         logits = high_level_features
         saver = tf.train.Saver()
         print("Logits tensor shape:", tf.Tensor.get_shape(logits))
         #None is returned as no control ops are defined yet.
-        return logits, None, saver, None
+        return logits, seq_length, saver, None
 
  

@@ -15,6 +15,9 @@ from processing.target_coder import TextEncoder
 from processing.feature_reader import FeatureReader
 from neuralnetworks.classifiers.las_model import LasModel
 from neuralnetworks.decoder import LasDecoder
+from neuralnetworks.classifiers.las_model import GeneralSettings
+from neuralnetworks.classifiers.las_model import ListenerSettings
+from neuralnetworks.classifiers.las_model import AttendAndSpellSettings
 
 
 
@@ -54,11 +57,23 @@ TRAIN = "/train/40fbank"
 PHONEMES = False
 MEL_FEATURE_NO = 40
 
+if 0:
+    epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE, \
+    LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH, general_settings, \
+    listener_settings, attend_and_spell_settings = \
+    pickle.load(open("saved_models/spchcl21.esat.kuleuven.be/2016-11-12.pkl", "rb"))
+else: 
+    MAX_N_EPOCHS = 600
+    MAX_BATCH_SIZE = 64
+    UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
+    DEVICE = None
+    general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
+                                       AURORA_LABELS, tf.float32)
+    #lstm_dim, plstm_layer_no, output_dim, out_weights_std
+    listener_settings = ListenerSettings(256, 3, 256, 0.1)
+    #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
+    attend_and_spell_settings = AttendAndSpellSettings(512, 512, 3)
 
-epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE, \
-LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH, general_settings, \
-listener_settings, attend_and_spell_settings = \
-pickle.load(open("saved_models/spchcl21.esat.kuleuven.be/2016-11-12.pkl", "rb"))
 
 train_dispenser = generate_dispenser(AURORA_PATH, TRAIN, AURORA_LABELS,
                                      UTTERANCES_PER_MINIBATCH, PHONEMES)
@@ -102,7 +117,7 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 with tf.Session(graph=las_decoder.graph, config=config):
     las_decoder.restore(
-        'saved_models/spchcl21.esat.kuleuven.be/2016-11-12.mdl')
+        'saved_models/spchcl21.esat.kuleuven.be/2016-11-16.mdl')
     test_batch = test_dispenser.get_batch()
     inputs = test_batch[0]
     targets = test_batch[1]
