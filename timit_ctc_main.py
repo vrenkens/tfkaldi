@@ -93,8 +93,8 @@ CTC_TIMIT_LABELS = TIMIT_LABELS + 1 #add one for ctc
 #askoy
 if 1:
     MAX_N_EPOCHS = 600
-    MAX_BATCH_SIZE = 64
-    UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
+    MAX_BATCH_SIZE = 32
+    UTTERANCES_PER_MINIBATCH = 16 #time vs memory tradeoff.
     #mel_feature_no, mini_batch_size, target_label_no, dtype
     general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
                                        CTC_TIMIT_LABELS, tf.float32)

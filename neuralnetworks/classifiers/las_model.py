@@ -99,9 +99,8 @@ class LasModel(Classifier):
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
-            high_level_features = self.listener(inputs,
-                                                seq_length)
-
+            high_level_features, feature_seq_length = self.listener(inputs,
+                                                                    seq_length)
 
             if self.decoding is not True:
                 print('adding attend and spell computations to the graph...')
