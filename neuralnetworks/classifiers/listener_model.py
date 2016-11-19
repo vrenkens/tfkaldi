@@ -12,7 +12,6 @@ sys.path.append("neuralnetworks")
 from classifiers.classifier import Classifier
 from las_elements import Listener
 from neuralnetworks.las_elements import AttendAndSpellCell
-from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 GeneralSettings = collections.namedtuple(
     "GeneralSettings",
@@ -68,14 +67,25 @@ class ListenerModel(Classifier):
         input_shape = tf.Tensor.get_shape(inputs)
         print("las input shape:", input_shape)
 
+        if is_training is True:
+            with tf.variable_scope("input_noise"):
+                #add input noise with a standart deviation of stddev.
+                stddev = 0.65
+                inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs  
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
             high_level_features, seq_length = self.listener(inputs,
-                                                seq_length)
+                                                            seq_length,
+                                                            reuse)
 
         logits = high_level_features
-        saver = tf.train.Saver()
+
+        if is_training is True:
+            saver = tf.train.Saver()
+        else:
+            saver = None
+
         print("Logits tensor shape:", tf.Tensor.get_shape(logits))
         #None is returned as no control ops are defined yet.
         return logits, seq_length, saver, None

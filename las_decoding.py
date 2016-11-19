@@ -119,6 +119,7 @@ with tf.Session(graph=las_decoder.graph, config=config):
     las_decoder.restore(
         'saved_models/spchcl21.esat.kuleuven.be/2016-11-16.mdl')
     test_batch = test_dispenser.get_batch()
+    #TODO: check input dimension!!! Could be wrong.
     inputs = test_batch[0]
     targets = test_batch[1]
     decoded = las_decoder(inputs)

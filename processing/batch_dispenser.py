@@ -7,7 +7,6 @@
 from abc import ABCMeta, abstractmethod
 import gzip
 import numpy as np
-from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 
 ## Class that dispenses batches of data for mini-batch training

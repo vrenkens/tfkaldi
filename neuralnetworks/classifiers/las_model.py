@@ -77,6 +77,13 @@ class LasModel(Classifier):
         print("    training_graph:", is_training)
         print("    decoding_graph:", self.decoding, '\x1b[0m')
 
+        if is_training is True:
+            with tf.variable_scope("input_noise"):
+                #add input noise with a standart deviation of stddev.
+                stddev = 0.65
+                inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs 
+
+
         #inputs = tf.cast(inputs, self.dtype)
         if targets is not None:
             #one hot encode the targets
@@ -99,14 +106,11 @@ class LasModel(Classifier):
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
-            high_level_features, feature_seq_length = self.listener(inputs,
-                                                                    seq_length)
+            high_level_features, _ = self.listener(inputs, seq_length, reuse)
 
             if self.decoding is not True:
                 print('adding attend and spell computations to the graph...')
                 #training mode
-
-
                 self.attend_and_spell_cell.set_features(high_level_features)
                 zero_state = self.attend_and_spell_cell.zero_state(
                     self.batch_size, self.dtype)
@@ -155,7 +159,10 @@ class LasModel(Classifier):
 
             # The saver can be used to restore the variables in the graph
             # from file later.
-            saver = tf.train.Saver()
+            if is_training is True:
+                saver = tf.train.Saver()
+            else:
+                saver = None
 
         print("Logits tensor shape:", tf.Tensor.get_shape(logits))
 

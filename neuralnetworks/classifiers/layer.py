@@ -3,8 +3,10 @@ Neural network layers '''
 
 import tensorflow as tf
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops.rnn_cell import RNNCell
 from tensorflow.python.ops.rnn import bidirectional_dynamic_rnn
-from IPython.core.debugger import Tracer; debug_here = Tracer()
+from tensorflow.python.ops.rnn import dynamic_rnn
+from neuralnetworks.classifiers.activation import IdentityWrapper
 
 
 class FFLayer(object):
@@ -154,3 +156,50 @@ def concatenate(inputs, sequence_lengths, scope):
     sequence_lengths = tf.cast(tf.floor(sequence_lengths/2),
                                tf.int32)
     return inputs, sequence_lengths
+
+
+class LinearCell(RNNCell):
+    """
+    A linear cell for the listener output layer
+    """
+    def __init__(self, output_dim, out_weights_std):
+        self._output_dim = output_dim
+        self._out_weights_std = out_weights_std
+        identity_activation = IdentityWrapper()
+        self.ff_layer = FFLayer(output_dim, identity_activation,
+                                out_weights_std)
+
+    @property
+    def state_size(self):
+        return 0
+
+    @property
+    def output_size(self):
+        return self._output_dim
+
+    def __call__(self, inputs, state, scope=None):
+        with tf.variable_scope(scope or type(self).__name__):
+            output = self.ff_layer(inputs)
+        return output, state
+
+class LinearLayer(object):
+    """ This layer implements a sequential linear layer.
+        The idea is to use a stateless linear Cell, in order
+        to be able to dynamically unroll the linear layer computation,
+        using the tensorflow default functions. """
+
+    def __init__(self, output_dim, out_weights_std):
+        self._output_dim = output_dim
+        self._out_weights_std = out_weights_std
+
+    def __call__(self, inputs, sequence_lengths, is_training=False,
+                 reuse=False, scope=None):
+
+        with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
+            linear_cell = LinearCell(self._output_dim, self._out_weights_std)
+            outputs, _ = dynamic_rnn(linear_cell, inputs, dtype=tf.float32,
+                                     sequence_length=sequence_lengths)
+
+        return outputs
+
+        

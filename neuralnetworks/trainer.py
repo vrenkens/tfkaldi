@@ -75,7 +75,6 @@ class Trainer(object):
                            target_seq_length=self.target_seq_length)
 
             #compute the validation output of the nnetgraph
-            #TODO: use the sequence lengths here.
             logits, _, _, _ = classifier(
                 self.inputs, self.input_seq_length,
                 is_training=False, reuse=True, scope='Classifier',
@@ -604,10 +603,6 @@ class CrossEnthropyTrainer(Trainer):
                 nonseq_logits, nonseq_targets))
 
 
-
-
-
-
 class CTCTrainer(Trainer):
     '''A trainer that minimises the CTC loss, the output sequences'''
 
@@ -635,9 +630,8 @@ class CTCTrainer(Trainer):
 
         idx, vals, shape = self.target_tensor_to_sparse(targets, target_seq_length)
         sparse_targets = tf.cast(tf.SparseTensor(idx, vals, shape), tf.int32)
-        debug_here()
         return tf.reduce_sum(tf.nn.ctc_loss(tf.pack(logits), sparse_targets,
-                       logit_seq_length, time_major=False))
+                                            logit_seq_length, time_major=False))
 
 
     def target_tensor_to_sparse(self, target_tensor, target_seq_length):
@@ -657,6 +651,5 @@ class CTCTrainer(Trainer):
         idx = tf.cast(tf.convert_to_tensor(indices), tf.int64)
         vls = tf.cast(tf.convert_to_tensor(vals), tf.int64)
         shp = tf.cast(tf.convert_to_tensor(shape), tf.int64)
-        debug_here()
         return idx, vls, shp
 

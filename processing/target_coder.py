@@ -4,7 +4,7 @@ alignments etc. '''
 
 from abc import ABCMeta, abstractmethod
 import numpy as np
-from IPython.core.debugger import Tracer; debug_here = Tracer()
+
 
 class TargetCoder(object):
     '''an abstract class for a target coder which can encode and decode target
@@ -78,7 +78,7 @@ class TargetCoder(object):
         for char in encoded_targets:
             targets.append(reverse_dict[int(char)])
 
-        return ''.join(targets)
+        return ' '.join(targets)
 
     @property
     def num_labels(self):

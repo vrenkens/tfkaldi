@@ -11,12 +11,11 @@ from tensorflow.python.ops.rnn_cell import RNNCell
 from tensorflow.python.util import nest
 
 # we are currenly in neuralnetworks, add it to the path.
+from neuralnetworks.classifiers.layer import LinearLayer
 from neuralnetworks.classifiers.layer import FFLayer
 from neuralnetworks.classifiers.layer import BLSTMLayer
 from neuralnetworks.classifiers.activation import TfActivation
 from neuralnetworks.classifiers.activation import IdentityWrapper
-
-from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 #disable the too few public methods complaint
 # pylint: disable=R0903
@@ -39,15 +38,17 @@ class Listener(object):
         self.blstm_layer = BLSTMLayer(lstm_dim, pyramidal=False)
         #on top of are three pyramidal BLSTM layers.
         self.plstm_layer = BLSTMLayer(lstm_dim, pyramidal=True)
+        self.linear_layer = LinearLayer(output_dim, out_weights_std)
 
-        identity_activation = IdentityWrapper()
-        self.output_layer = FFLayer(output_dim, identity_activation,
-                                    out_weights_std)
         self.reuse = None
 
-    def __call__(self, input_features, sequence_lengths):
+    def __call__(self, input_features, sequence_lengths, reuse):
         """ Compute the output of the listener function. """
         #compute the base layer blstm output.
+
+        if reuse is True:
+            self.reuse = True
+
         with tf.variable_scope(type(self).__name__, reuse=self.reuse) as scope:
             hidden_values, sequence_lengths = \
                 self.blstm_layer(input_features,
@@ -61,31 +62,13 @@ class Listener(object):
                                      sequence_lengths,
                                      reuse=self.reuse,
                                      scope=("plstm_layer_" + str(counter)))
-            output_values = self.linear_output_layer(hidden_values, scope)
+            output_values = self.linear_layer(hidden_values,
+                                              sequence_lengths,
+                                              scope="linear_layer")
         if self.reuse is None:
             self.reuse = True
         return output_values, sequence_lengths
 
-    def linear_output_layer(self, hidden_values, scope):
-        """ Run the concatenated forward and backward layer computations trough
-            a simple linear output layer as described in:
-            Speech recognition with deep recurrent neural networks,
-            Graves, A, Mohamed, A.-R., Hinton, G
-        """
-        reuse = None or self.reuse
-        scope = type(self).__name__ + "linear_layer"
-        with tf.variable_scope(scope, reuse=reuse):
-            hidden_time = tf.Tensor.get_shape(hidden_values)[1]
-            output_values_lst = []
-            #TODO: Test.
-            for time in range(int(hidden_time)):
-                output_value = hidden_values[:, time, :]
-                output_values_lst.append(self.output_layer(
-                    output_value, reuse=reuse, scope=scope))
-                if reuse is None:
-                    reuse = True
-            output_values = tf.pack(output_values_lst, axis=1)
-        return output_values
 
 #create a tf style cell state tuple object to derive the actual tuple from.
 _AttendAndSpellStateTouple = \

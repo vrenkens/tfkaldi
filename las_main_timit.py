@@ -17,12 +17,15 @@ from processing.batch_dispenser import PhonemeBatchDispenser
 from processing.target_normalizers import timit_phone_norm
 from processing.target_coder import PhonemeEncoder
 from processing.feature_reader import FeatureReader
-from neuralnetworks.classifiers.listener_model import ListenerModel
+from neuralnetworks.classifiers.las_model import LasModel
 from neuralnetworks.classifiers.las_model import GeneralSettings
 from neuralnetworks.classifiers.las_model import ListenerSettings
-from neuralnetworks.trainer import CTCTrainer
+from neuralnetworks.classifiers.las_model import AttendAndSpellSettings
+from neuralnetworks.trainer import LasTrainer
 
 from IPython.core.debugger import Tracer; debug_here = Tracer()
+
+start_time = time.time()
 
 def set_up_dispensers(max_batch_size):
     """load training, validation and testing data.""" 
@@ -72,42 +75,55 @@ def set_up_dispensers(max_batch_size):
 
     return traindispenser, valdispenser, testdispenser
 
-start_time = time.time()
 
 ###Learning Parameters
 #LEARNING_RATE = 0.0008
 LEARNING_RATE = 0.0001
 LEARNING_RATE_DECAY = 0.98
 
-OVERFIT_TOL = 99999
-
 ####Network Parameters
 n_features = 40
-
 TIMIT_LABELS = 39
-CTC_TIMIT_LABELS = TIMIT_LABELS + 1 #add one for ctc
 
-#spchcl23
+#askoy
 if 0:
     MAX_N_EPOCHS = 600
-    MAX_BATCH_SIZE = 32
-    UTTERANCES_PER_MINIBATCH = 16 #time vs memory tradeoff.
+    MAX_BATCH_SIZE = 30
+    UTTERANCES_PER_MINIBATCH = 2 #time vs memory tradeoff.
     #mel_feature_no, mini_batch_size, target_label_no, dtype
     general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
-                                       CTC_TIMIT_LABELS, tf.float32)
+                                       TIMIT_LABELS, tf.float32)
     #lstm_dim, plstm_layer_no, output_dim, out_weights_std
-    listener_settings = ListenerSettings(156, 0, 56, 0.1)
-#molder
+    listener_settings = ListenerSettings(56, 3, 56, 0.1)
+    #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
+    attend_and_spell_settings = AttendAndSpellSettings(128, 128, 3)
+#spchcl22
+if 0:
+    MAX_N_EPOCHS = 600
+    MAX_BATCH_SIZE = 64
+    UTTERANCES_PER_MINIBATCH = 32 #time vs memory tradeoff.
+    DEVICE = None
+    general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
+                                       TIMIT_LABELS, tf.float32)
+    #lstm_dim, plstm_layer_no, output_dim, out_weights_std
+    listener_settings = ListenerSettings(256, 3, 256, 0.1)
+    #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
+    attend_and_spell_settings = AttendAndSpellSettings(512, 512, 3)
+#spchcl21
 if 1:
-    #MAX_N_EPOCHS = 7000
-    MAX_N_EPOCHS = 7000
-    MAX_BATCH_SIZE = 256
-    UTTERANCES_PER_MINIBATCH = 128 #time vs memory tradeoff.
+    #MAX_N_EPOCHS = 14000
+    MAX_N_EPOCHS = 35000
+    MAX_BATCH_SIZE = 50
+    UTTERANCES_PER_MINIBATCH = 10 #time vs memory tradeoff.
+
     #mel_feature_no, mini_batch_size, target_label_no, dtype
     general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
-                                       CTC_TIMIT_LABELS, tf.float32)
+                                       TIMIT_LABELS, tf.float32)
     #lstm_dim, plstm_layer_no, output_dim, out_weights_std
-    listener_settings = ListenerSettings(156, 0, 40, 0.1)
+    listener_settings = ListenerSettings(64, 3, 64, 0.1)
+    #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
+    attend_and_spell_settings = AttendAndSpellSettings(64, 64, 2)
+
 
 
 MAX_TIME_STEPS_TIMIT = 777
@@ -115,14 +131,19 @@ MEL_FEATURE_NO = 40
 
 train_dispenser, val_dispenser, test_dispenser = set_up_dispensers(MAX_BATCH_SIZE)
 
+
 BATCH_COUNT = train_dispenser.num_batches
 BATCH_COUNT_VAL = val_dispenser.num_batches
 BATCH_COUNT_TEST = test_dispenser.num_batches
 print(BATCH_COUNT, BATCH_COUNT_VAL, BATCH_COUNT_TEST)
-n_classes = CTC_TIMIT_LABELS
+
 
 test_batch = test_dispenser.get_batch()
 #create the las arcitecture
+
+las_model = LasModel(general_settings, listener_settings,
+                     attend_and_spell_settings)
+
 
 max_input_length = np.max([train_dispenser.max_input_length,
                            val_dispenser.max_input_length,
@@ -131,39 +152,42 @@ max_input_length = np.max([train_dispenser.max_input_length,
 max_target_length = np.max([train_dispenser.max_target_length,
                             val_dispenser.max_target_length,
                             test_dispenser.max_target_length])
-listener_model = ListenerModel(general_settings, listener_settings)
 
-ctc_trainer = CTCTrainer(listener_model, MEL_FEATURE_NO, MAX_TIME_STEPS_TIMIT,
-                         max_target_length, LEARNING_RATE, LEARNING_RATE_DECAY,
-                         MAX_N_EPOCHS, UTTERANCES_PER_MINIBATCH)
+las_model = LasModel(general_settings, listener_settings,
+                     attend_and_spell_settings)
 
+las_trainer = LasTrainer(
+    las_model, n_features, max_input_length, max_target_length,
+    LEARNING_RATE, LEARNING_RATE_DECAY, MAX_N_EPOCHS,
+    UTTERANCES_PER_MINIBATCH)
 
 print('\x1b[01;32m' + "--- Graph generation done. --- time since start [min]",
       (time.time() - start_time)/60.0, '\x1b[0m')
+
 
 ####Run session
 epoch = 0
 epoch_loss_lst = []
 epoch_loss_lst_val = []
 
-ctc_trainer.start_visualization('saved_models/' + socket.gethostname())
+las_trainer.start_visualization('saved_models/' + socket.gethostname())
 #start a tensorflow session
 config = tf.ConfigProto()
 #pylint does not get the tensorflow object members right.
 #pylint: disable=E1101
 config.gpu_options.allow_growth = True
-with tf.Session(graph=ctc_trainer.graph, config=config):
+with tf.Session(graph=las_trainer.graph, config=config):
     #initialise the trainer
     print("Initializing")
-    ctc_trainer.initialize()
+    las_trainer.initialize()
     print("Starting computation.")
     inputs, targets = train_dispenser.get_batch()
-    eval_loss = ctc_trainer.evaluate(inputs, targets)
+    eval_loss = las_trainer.evaluate(inputs, targets)
     epoch_loss_lst.append(eval_loss)
     print("pre training loss:", eval_loss)
 
     inputs, targets = val_dispenser.get_batch()
-    validation_loss = ctc_trainer.evaluate(inputs, targets)
+    validation_loss = las_trainer.evaluate(inputs, targets)
     epoch_loss_lst_val.append(validation_loss)
     print('validation set pre training loss:', validation_loss)
 
@@ -172,7 +196,7 @@ with tf.Session(graph=ctc_trainer.graph, config=config):
         print('Epoch', epoch, '...')
         input_batches = []
         inputs, targets = train_dispenser.get_batch()
-        train_loss = ctc_trainer.update(inputs, targets)
+        train_loss = las_trainer.update(inputs, targets)
         print('loss:', train_loss)
         epoch = epoch + 1
 
@@ -181,10 +205,14 @@ with tf.Session(graph=ctc_trainer.graph, config=config):
                   + "-----  validation Step --- time since start [h]   ",
                   (time.time() - start_time)/3600.0,
                   '\x1b[0m')
+            print('\x1b[01;32m'
+                  + "Computation time per batch [min]   ",
+                  ((time.time() - start_time)/60)/epoch,
+                  '\x1b[0m')
             epoch_loss_lst.append(train_loss)
 
             inputs, targets = val_dispenser.get_batch()
-            validation_loss = ctc_trainer.evaluate(inputs, targets)
+            validation_loss = las_trainer.evaluate(inputs, targets)
             print('\x1b[01;32m'
                   + "-----  validation loss: ", validation_loss,
                   '\x1b[0m')
@@ -198,13 +226,23 @@ with tf.Session(graph=ctc_trainer.graph, config=config):
                        + socket.gethostname() + "/"  \
                        + today \
                        + ".mdl"
-            ctc_trainer.save_model(filename)
+            las_trainer.save_model(filename)
             print("Model saved in file: %s" % filename)
 
             #run the network on the test data set.
             inputs, targets = test_dispenser.get_batch()
-            test_loss = ctc_trainer.evaluate(inputs, targets)
+            test_loss = las_trainer.evaluate(inputs, targets)
             print("test loss: ", test_loss)
+
+            filename = "saved_models/" \
+                       + socket.gethostname() + "/"  \
+                       + today \
+                       + ".pkl"
+            pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE, 
+                         LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH, general_settings,
+                         listener_settings, attend_and_spell_settings], open(filename, "wb"))
+            print("plot and parameter values pickled at: " + filename)
+
         # if the training error is lower than the validation error for
         # interval iterations stop..
         #interval = 50
@@ -233,23 +271,22 @@ with tf.Session(graph=ctc_trainer.graph, config=config):
                + socket.gethostname() + "/"  \
                + today \
                + ".mdl"
-    ctc_trainer.save_model(filename)
+    las_trainer.save_model(filename)
     print("Model saved in file: %s" % filename)
 
     #run the network on the test data set.
     inputs, targets = test_dispenser.get_batch()
-    test_loss = ctc_trainer.evaluate(inputs, targets)
+    test_loss = las_trainer.evaluate(inputs, targets)
     print("test loss: ", test_loss)
 
 filename = "saved_models/" \
-           + socket.gethostname()  + '/' \
+           + socket.gethostname() + "/"  \
            + today \
            + ".pkl"
-pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE,
-             LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH,
-             general_settings, listener_settings],
-             open(filename, "wb"))
-print("plot values saved at: " + filename)
+pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE, 
+             LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH, general_settings,
+             listener_settings, attend_and_spell_settings], open(filename, "wb"))
+print("plot and parameter values pickled at: " + filename)
 
 plt.plot(np.array(epoch_loss_lst))
 plt.plot(np.array(epoch_loss_lst_val))
@@ -257,5 +294,3 @@ plt.show()
 
 print("--- Program execution done --- time since start [h]",
       (time.time() - start_time)/3600.0)
-
-

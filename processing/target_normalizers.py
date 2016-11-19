@@ -1,7 +1,6 @@
 '''@file target_normalizers.py
 Contains functions for target normalization, this is database and task dependent
 '''
-from IPython.core.debugger import Tracer; debug_here = Tracer()
 
 def aurora4_normalizer(transcription, alphabet):
     '''
