@@ -75,8 +75,8 @@ def set_up_dispensers(max_batch_size):
 start_time = time.time()
 
 ###Learning Parameters
-#LEARNING_RATE = 0.0008
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.0008
+#LEARNING_RATE = 0.0001
 LEARNING_RATE_DECAY = 0.98
 
 OVERFIT_TOL = 99999
@@ -100,7 +100,7 @@ if 0:
 #molder
 if 1:
     #MAX_N_EPOCHS = 7000
-    MAX_N_EPOCHS = 7000
+    MAX_N_EPOCHS = 10000
     MAX_BATCH_SIZE = 256
     UTTERANCES_PER_MINIBATCH = 128 #time vs memory tradeoff.
     #mel_feature_no, mini_batch_size, target_label_no, dtype
@@ -180,6 +180,10 @@ with tf.Session(graph=ctc_trainer.graph, config=config):
             print('\x1b[01;32m'
                   + "-----  validation Step --- time since start [h]   ",
                   (time.time() - start_time)/3600.0,
+                  '\x1b[0m')
+            print('\x1b[01;32m'
+                  + "-----  Computation time per batch --- [min]       ",
+                  ((time.time() - start_time)/60)/epoch,
                   '\x1b[0m')
             epoch_loss_lst.append(train_loss)
 

@@ -16,6 +16,9 @@ from neuralnetworks.classifiers.layer import FFLayer
 from neuralnetworks.classifiers.layer import BLSTMLayer
 from neuralnetworks.classifiers.activation import TfActivation
 from neuralnetworks.classifiers.activation import IdentityWrapper
+from neuralnetworks.classifiers.seq_convertors import seq2nonseq
+from neuralnetworks.classifiers.seq_convertors import nonseq2seq
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 #disable the too few public methods complaint
 # pylint: disable=R0903
@@ -38,7 +41,9 @@ class Listener(object):
         self.blstm_layer = BLSTMLayer(lstm_dim, pyramidal=False)
         #on top of are three pyramidal BLSTM layers.
         self.plstm_layer = BLSTMLayer(lstm_dim, pyramidal=True)
-        self.linear_layer = LinearLayer(output_dim, out_weights_std)
+        identity_activation = IdentityWrapper()
+        self.ff_layer = FFLayer(output_dim, identity_activation,
+                                out_weights_std)
 
         self.reuse = None
 
@@ -49,7 +54,7 @@ class Listener(object):
         if reuse is True:
             self.reuse = True
 
-        with tf.variable_scope(type(self).__name__, reuse=self.reuse) as scope:
+        with tf.variable_scope(type(self).__name__, reuse=self.reuse):
             hidden_values, sequence_lengths = \
                 self.blstm_layer(input_features,
                                  sequence_lengths,
@@ -62,9 +67,15 @@ class Listener(object):
                                      sequence_lengths,
                                      reuse=self.reuse,
                                      scope=("plstm_layer_" + str(counter)))
-            output_values = self.linear_layer(hidden_values,
-                                              sequence_lengths,
-                                              scope="linear_layer")
+
+            with tf.variable_scope('linear_layer', reuse=self.reuse):
+                hidden_shape = tf.Tensor.get_shape(hidden_values)
+                non_seq_hidden = seq2nonseq(hidden_values, sequence_lengths)
+                non_seq_output_values = self.ff_layer(non_seq_hidden)
+                output_values = nonseq2seq(non_seq_output_values, sequence_lengths,
+                                           int(hidden_shape[1]))
+
+
         if self.reuse is None:
             self.reuse = True
         return output_values, sequence_lengths
@@ -129,6 +140,7 @@ class AttendAndSpellCell(RNNCell):
         #the decoder state size must be equal to the RNN size.
         self.dec_state_size = decoder_state_size
         self.high_lvl_features = None
+        self.psi = None
         self.las_model = las_model
 
         #Determines whether the post_context_rnn will be used.
@@ -175,13 +187,21 @@ class AttendAndSpellCell(RNNCell):
         self.one_hot_char_shape = None
 
 
-    def set_features(self, high_lvl_features):
+    def set_features(self, high_lvl_features, feature_seq_lengths):
         ''' Set the features when available, storing the features in the
             object makes the cell call simpler.'''
-        print("     Feature dimension:",
-              tf.Tensor.get_shape(high_lvl_features))
-        self.high_lvl_features = tf.unpack(high_lvl_features, axis=1)
 
+        self.high_lvl_features = high_lvl_features
+
+        with tf.variable_scope("compute_psi"):
+            print("     Feature dimension:",
+                  tf.Tensor.get_shape(high_lvl_features))
+            feature_shape = tf.Tensor.get_shape(high_lvl_features)
+            non_seq_features = seq2nonseq(high_lvl_features, feature_seq_lengths)
+            non_seq_psi = self.featr_net(non_seq_features)
+            self.psi = nonseq2seq(non_seq_psi, feature_seq_lengths,
+                                  int(feature_shape[1]))
+            print("  Psi tensor dimension:", tf.Tensor.get_shape(self.psi))
 
     @property
     def output_size(self):
@@ -257,7 +277,7 @@ class AttendAndSpellCell(RNNCell):
             pre_context_states, post_context_states, one_hot_char, \
                 context_vector = state
 
-            if self.high_lvl_features is None:
+            if self.psi is None:
                 raise AttributeError("Features must be set.")
 
             #Pick the last output sometimes.
@@ -299,23 +319,29 @@ class AttendAndSpellCell(RNNCell):
 
             with tf.variable_scope("attention_context", reuse=reuse):
                 ### compute the attention context. ###
-                # e_(i,u) = psi(s_i)^T * phi(h_u)
+                # e_(i,u) = phi(s_i)^T * psi(h_u)
                 phi = self.state_net(pre_context_out)
-                scalar_energy_lst = []
-                #for loop running trough the high level features.
-                #assert len(high level features) == U.
-                for feat_vec in self.high_lvl_features:
-                    psi = self.featr_net(feat_vec)
-                    scalar_energy = tf.reduce_sum(psi*phi, reduction_indices=1,
-                                                  name='dot_sum')
-                    scalar_energy_lst.append(scalar_energy)
-                # alpha = softmax(e_(i,u))
-                scalar_energy_tensor = tf.convert_to_tensor(scalar_energy_lst)
-                #Alpha has the same shape as the scalar_energy_tensor
-                alpha = tf.nn.softmax(scalar_energy_tensor)
+                    #scalar_energy_lst = []
+                    #for loop running trough the high level features.
+                    #assert len(high level features) == U.
+                    #for psi in self.psi:
+                    #    scalar_energy = tf.reduce_sum(psi*phi, reduction_indices=1,
+                    #                                  name='dot_sum')
+                    #    scalar_energy_lst.append(scalar_energy)
+                    # alpha = softmax(e_(i,u))
+                    #scalar_energy_tensor = tf.convert_to_tensor(scalar_energy_lst)
+                    #Alpha has the same shape as the scalar_energy_tensor
+                #Rewrite the loop above in matrix nontation for extra speed: 
+                #phi_3d shape: [batch_size, state_size, 1]                  
+                phi_3d = tf.expand_dims(phi, 2)
+                #[batch_size, time, state_size] * [batch_size, state_size, 1]
+                # = [batch_size, time, 1]
+                energy_3d = tf.batch_matmul(self.psi, phi_3d, 
+                                            name='scalar_energy_matmul')
+                scalar_energy = tf.squeeze(energy_3d)
+                alpha = tf.nn.softmax(scalar_energy)
 
                 #record the scalar_enrgies and alphas for later analysis.
-                #TODO: Fix:
                 # InvalidArgumentError: All inputs to node MergeSummary/
                 # MergeSummary must be from the same frame.
                 #Error!!!
@@ -323,16 +349,26 @@ class AttendAndSpellCell(RNNCell):
                 #tf.histogram_summary('alphas', alpha)
 
                 ### find the context vector. ###
-                # c_i = sum(alpha*h_i)
-                context_vector = 0*context_vector
-                for t in range(0, len(self.high_lvl_features)):
-                    #reshaping from (batch_size,) to (batch_size,1) is
-                    #needed for broadcasting.
-                    current_alpha = tf.reshape(alpha[t, :],
-                                               [self.las_model.batch_size,
-                                                1])
-                    context_vector = (context_vector
-                                      + current_alpha*self.high_lvl_features[t])
+                    # c_i = sum(alpha*h_i)
+                    #context_vector = 0*context_vector
+                    #for time in range(0, len(self.high_lvl_features)):
+                        #reshaping from (batch_size,) to (batch_size,1) is
+                        #needed for broadcasting.
+                    #    current_alpha = tf.reshape(alpha[time, :],
+                    #                               [self.las_model.batch_size,
+                    #                                1])
+                    #    context_vector = (context_vector
+                    #                      + current_alpha*self.high_lvl_features[time])
+                # Rewrite for-loop in vector notation for improved speed.
+                # alpha_3d has shape: [batch_size, 1 , time].
+                alpha_3d = tf.expand_dims(alpha, 1)
+                # [batch_size, 1 , time] * [batch_size, time, state_dim]
+                # = [batch_size, 1, state_dim]
+                context_vector_3d = tf.batch_matmul(alpha_3d, self.high_lvl_features,
+                                                    name='context_matmul')
+                context_vector = tf.squeeze(context_vector_3d)
+
+
 
             if self.type_two is True:
                 post_context_out, post_context_states = \

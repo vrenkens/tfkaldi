@@ -73,8 +73,8 @@ def set_up_dispensers(max_batch_size):
 start_time = time.time()
 
 ###Learning Parameters
-#LEARNING_RATE = 0.0008
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.0008
+#LEARNING_RATE = 0.0001
 LEARNING_RATE_DECAY = 0.98
 
 OVERFIT_TOL = 99999
@@ -92,7 +92,7 @@ if 1:
     epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE, \
     LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH, \
     general_settings, listener_settings = \
-    pickle.load(open("saved_models/listen_CTC_14000_noreg/2016-11-19.pkl", "rb"))
+    pickle.load(open("saved_models/molder.esat.kuleuven.be/2016-11-21.pkl", "rb"))
 else:
     #molder
     MAX_N_EPOCHS = 600
@@ -130,7 +130,7 @@ max_input_length = np.max([train_dispenser.max_input_length,
 max_target_length = np.max([train_dispenser.max_target_length,
                             val_dispenser.max_target_length,
                             test_dispenser.max_target_length])
-listener_model = ListenerModel(general_settings, listener_settings)
+listener_model = ListenerModel(general_settings, listener_settings, decoding=True)
 
 ctc_decoder = CTCDecoder(listener_model, MEL_FEATURE_NO, MAX_TIME_STEPS_TIMIT,
                          max_target_length, MAX_BATCH_SIZE)
@@ -140,7 +140,7 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 with tf.Session(graph=ctc_decoder.graph, config=config):
     ctc_decoder.restore(
-        'saved_models/listen_CTC_14000_noreg/2016-11-19.mdl')
+        'saved_models/molder.esat.kuleuven.be/2016-11-21.mdl')
     test_batch = test_dispenser.get_batch()
     inputs = test_batch[0]
     targets = test_batch[1]

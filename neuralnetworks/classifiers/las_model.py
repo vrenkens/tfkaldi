@@ -106,12 +106,14 @@ class LasModel(Classifier):
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
-            high_level_features, _ = self.listener(inputs, seq_length, reuse)
+            high_level_features, feature_seq_length \
+                = self.listener(inputs, seq_length, reuse)
 
             if self.decoding is not True:
                 print('adding attend and spell computations to the graph...')
                 #training mode
-                self.attend_and_spell_cell.set_features(high_level_features)
+                self.attend_and_spell_cell.set_features(high_level_features,
+                                                        feature_seq_length)
                 zero_state = self.attend_and_spell_cell.zero_state(
                     self.batch_size, self.dtype)
                 logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,

@@ -1,33 +1,30 @@
-"""@file seq_convertors.py
+'''@file seq_convertors.py
 this file contains functions that convert sequential data to non-sequential data
 and the other way around. Sequential data is defined to be data that is suetable
 as RNN input. This means that the data is a list containing an N x F tensor for
 each time step where N is the batch size and F is the input dimension non
 sequential data is data suetable for input to fully connected layers. This means
 that the data is a TxF tensor where T is the sum of all sequence lengths. This
-functionality only works for q specified batch size"""
+functionality only works for q specified batch size'''
 
 import tensorflow as tf
 
-def seq2nonseq(tensorlist, seq_length, name=None):
-    """
+def seq2nonseq(sequential, seq_length, name=None):
+    '''
     Convert sequential data to non sequential data
-
     Args:
-        tensorlist: the sequential data, wich is a list containing an N x F
-            tensor for each time step where N is the batch size and F is the
-            input dimension
+        sequential: the sequential data which is a [batch_size, max_length, dim]
+            tensor
         seq_length: a vector containing the sequence lengths
         name: [optional] the name of the operation
-
     Returns:
         non sequential data, which is a TxF tensor where T is the sum of all
         sequence lengths
-    """
+    '''
 
     with tf.name_scope(name or 'seq2nonseq'):
         #convert the list for each time step to a list for each sequence
-        sequences = tf.unpack(tf.pack(tensorlist), axis=1)
+        sequences = tf.unpack(sequential)
 
         #remove the padding from sequences
         sequences = [tf.gather(sequences[s], tf.range(seq_length[s]))
@@ -39,21 +36,18 @@ def seq2nonseq(tensorlist, seq_length, name=None):
     return tensor
 
 def nonseq2seq(tensor, seq_length, length, name=None):
-    """
+    '''
     Convert non sequential data to sequential data
-
     Args:
         tensor: non sequential data, which is a TxF tensor where T is the sum of
             all sequence lengths
         seq_length: a vector containing the sequence lengths
         length: the constant length of the output sequences
         name: [optional] the name of the operation
-
     Returns:
-        sequential data, wich is a list containing an N x F
-        tensor for each time step where N is the batch size and F is the
-        input dimension
-    """
+        sequential data, which is a [batch_size, max_length, dim]
+        tensor
+    '''
 
     with tf.name_scope(name or'nonseq2seq'):
         #get the cumulated sequence lengths to specify the positions in tensor
@@ -74,7 +68,7 @@ def nonseq2seq(tensor, seq_length, length, name=None):
         for seq in sequences:
             seq.set_shape([length, int(tensor.get_shape()[1])])
 
-        #convert the list for eqch sequence to a list for eqch time step
-        tensorlist = tf.unpack(tf.pack(sequences), axis=1)
+        #pack the sequences into a tensor
+        sequential = tf.pack(sequences)
 
-    return tensorlist
+    return sequential

@@ -11,7 +11,8 @@ import tensorflow as tf
 sys.path.append("neuralnetworks")
 from classifiers.classifier import Classifier
 from las_elements import Listener
-from neuralnetworks.las_elements import AttendAndSpellCell
+from IPython.core.debugger import Tracer; debug_here = Tracer();
+
 
 GeneralSettings = collections.namedtuple(
     "GeneralSettings",
@@ -81,7 +82,7 @@ class ListenerModel(Classifier):
 
         logits = high_level_features
 
-        if is_training is True:
+        if (is_training is True) or (self.decoding is True):
             saver = tf.train.Saver()
         else:
             saver = None

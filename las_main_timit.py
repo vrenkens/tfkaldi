@@ -206,7 +206,7 @@ with tf.Session(graph=las_trainer.graph, config=config):
                   (time.time() - start_time)/3600.0,
                   '\x1b[0m')
             print('\x1b[01;32m'
-                  + "Computation time per batch [min]   ",
+                  + "-----  Computation time per batch --- [min]       ",
                   ((time.time() - start_time)/60)/epoch,
                   '\x1b[0m')
             epoch_loss_lst.append(train_loss)
