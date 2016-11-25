@@ -644,8 +644,20 @@ class CTCTrainer(Trainer):
         #target_list = tf.unpack(target_tensor)
         zero = tf.constant(0, dtype=tf.int32)
         non_zero_mask = tf.not_equal(tf.cast(target_tensor, tf.int32), zero)  
-        indices = tf.where(non_zero_mask)   
-        vals = tf.boolean_mask(target_tensor, non_zero_mask)
+
+        target_seq_length_lst = tf.unpack(target_seq_length)
+        mask = []
+        for single_length in target_seq_length_lst:
+            ones_shape = tf.convert_to_tensor([1, single_length])
+            zeros_shape = tf.convert_to_tensor([1, self.max_target_length - single_length])
+            mask.append(tf.concat(1, 
+                                  [tf.ones(ones_shape),
+                                   tf.zeros(zeros_shape)]))
+        bool_mask = tf.cast(tf.concat(0, mask), tf.bool)
+        bool_mask.set_shape([self.numutterances_per_minibatch, self.max_target_length])
+
+        indices = tf.where(bool_mask)   
+        vals = tf.boolean_mask(target_tensor, bool_mask)
         shape = [self.numutterances_per_minibatch, self.max_target_length]
         
         idx = tf.cast(tf.convert_to_tensor(indices), tf.int64)

@@ -78,7 +78,7 @@ def set_up_dispensers(max_batch_size):
 
 ###Learning Parameters
 #LEARNING_RATE = 0.0008
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.01
 LEARNING_RATE_DECAY = 0.98
 
 ####Network Parameters
@@ -94,7 +94,7 @@ if 0:
     general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
                                        TIMIT_LABELS, tf.float32)
     #lstm_dim, plstm_layer_no, output_dim, out_weights_std
-    listener_settings = ListenerSettings(56, 3, 56, 0.1)
+    listener_settings = ListenerSettings(56, 2, 56, 0.1)
     #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
     attend_and_spell_settings = AttendAndSpellSettings(128, 128, 3)
 #spchcl22
@@ -112,7 +112,7 @@ if 0:
 #spchcl21
 if 1:
     #MAX_N_EPOCHS = 14000
-    MAX_N_EPOCHS = 35000
+    MAX_N_EPOCHS = 10000
     MAX_BATCH_SIZE = 50
     UTTERANCES_PER_MINIBATCH = 10 #time vs memory tradeoff.
 
@@ -120,7 +120,7 @@ if 1:
     general_settings = GeneralSettings(n_features, UTTERANCES_PER_MINIBATCH,
                                        TIMIT_LABELS, tf.float32)
     #lstm_dim, plstm_layer_no, output_dim, out_weights_std
-    listener_settings = ListenerSettings(64, 3, 64, 0.1)
+    listener_settings = ListenerSettings(64, 2, 64, 0.1)
     #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
     attend_and_spell_settings = AttendAndSpellSettings(64, 64, 2)
 
@@ -283,9 +283,10 @@ filename = "saved_models/" \
            + socket.gethostname() + "/"  \
            + today \
            + ".pkl"
-pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE, 
-             LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH, general_settings,
-             listener_settings, attend_and_spell_settings], open(filename, "wb"))
+pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE,
+             LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH,
+             general_settings, listener_settings,
+             attend_and_spell_settings], open(filename, "wb"))
 print("plot and parameter values pickled at: " + filename)
 
 plt.plot(np.array(epoch_loss_lst))

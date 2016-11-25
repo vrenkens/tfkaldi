@@ -57,8 +57,10 @@ class LasModel(Classifier):
         self.decoding = decoding
 
         #decoding constants
-        self.eos_treshold = 0.8
-        self.max_decoding_steps = 4000
+        self.eos_treshold = 1.8
+        #self.eos_treshold = 0.8
+        #self.max_decoding_steps = 100
+        self.max_decoding_steps = 44
 
         #store the two model parts.
         self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no, 
@@ -124,7 +126,8 @@ class LasModel(Classifier):
             else:
                 print('adding attend and spell computations to the graph...')
 
-                self.attend_and_spell_cell.set_features(high_level_features)
+                self.attend_and_spell_cell.set_features(high_level_features,
+                                                        feature_seq_length)
                 cell_state = self.attend_and_spell_cell.zero_state(
                     self.batch_size, self.dtype)
 
@@ -161,7 +164,7 @@ class LasModel(Classifier):
 
             # The saver can be used to restore the variables in the graph
             # from file later.
-            if is_training is True:
+            if (is_training is True) or (self.decoding is True):
                 saver = tf.train.Saver()
             else:
                 saver = None

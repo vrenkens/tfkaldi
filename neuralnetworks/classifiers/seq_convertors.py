@@ -32,7 +32,6 @@ def seq2nonseq(sequential, seq_length, name=None):
 
         #concatenate the sequences
         tensor = tf.concat(0, sequences)
-
     return tensor
 
 def nonseq2seq(tensor, seq_length, length, name=None):
@@ -70,5 +69,5 @@ def nonseq2seq(tensor, seq_length, length, name=None):
 
         #pack the sequences into a tensor
         sequential = tf.pack(sequences)
-
     return sequential
+    

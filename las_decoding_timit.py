@@ -15,10 +15,10 @@ from processing.batch_dispenser import PhonemeBatchDispenser
 from processing.target_normalizers import timit_phone_norm
 from processing.target_coder import PhonemeEncoder
 from processing.feature_reader import FeatureReader
-from neuralnetworks.classifiers.listener_model import ListenerModel
+from neuralnetworks.classifiers.las_model import LasModel
 from neuralnetworks.classifiers.las_model import GeneralSettings
 from neuralnetworks.classifiers.las_model import ListenerSettings
-from neuralnetworks.decoder import CTCDecoder
+from neuralnetworks.decoder import LasDecoder
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 
@@ -67,7 +67,6 @@ def set_up_dispensers(max_batch_size):
 
     testdispenser = PhonemeBatchDispenser(feature_reader, target_coder, max_batch_size, 
                                           target_path)
-
     return traindispenser, valdispenser, testdispenser
 
 start_time = time.time()
@@ -85,14 +84,11 @@ n_features = 40
 TIMIT_LABELS = 39
 CTC_TIMIT_LABELS = TIMIT_LABELS + 1 #add one for ctc
 
-MAX_BATCH_SIZE = 32
-
-
 if 1:
     epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE, \
     LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH, \
-    general_settings, listener_settings = \
-    pickle.load(open("saved_models/molder.esat.kuleuven.be/2016-11-22.pkl", "rb"))
+    general_settings, listener_settings, attend_and_spell_settings = \
+    pickle.load(open("saved_models/promising_las_timit_0.001_96_2/2016-11-25.pkl", "rb"))
 else:
     #molder
     MAX_N_EPOCHS = 600
@@ -112,7 +108,7 @@ print("Test loss:", test_loss)
 MAX_TIME_STEPS_TIMIT = 777
 MEL_FEATURE_NO = 40
 
-train_dispenser, val_dispenser, test_dispenser = set_up_dispensers(MAX_BATCH_SIZE)
+train_dispenser, val_dispenser, test_dispenser = set_up_dispensers(UTTERANCES_PER_MINIBATCH)
 
 BATCH_COUNT = train_dispenser.num_batches
 BATCH_COUNT_VAL = val_dispenser.num_batches
@@ -123,6 +119,12 @@ n_classes = CTC_TIMIT_LABELS
 test_batch = test_dispenser.get_batch()
 #create the las arcitecture
 
+
+las_model = LasModel(general_settings, listener_settings,
+                     attend_and_spell_settings, decoding=True)
+
+#las_trainer = LasTrainer(las_model, LEARNING_RATE, OMEGA)
+
 max_input_length = np.max([train_dispenser.max_input_length,
                            val_dispenser.max_input_length,
                            test_dispenser.max_input_length])
@@ -130,23 +132,38 @@ max_input_length = np.max([train_dispenser.max_input_length,
 max_target_length = np.max([train_dispenser.max_target_length,
                             val_dispenser.max_target_length,
                             test_dispenser.max_target_length])
-listener_model = ListenerModel(general_settings, listener_settings, decoding=True)
 
-ctc_decoder = CTCDecoder(listener_model, MEL_FEATURE_NO, MAX_TIME_STEPS_TIMIT,
-                         max_target_length, MAX_BATCH_SIZE)
+las_decoder = LasDecoder(las_model, MEL_FEATURE_NO, MAX_TIME_STEPS_TIMIT,
+                         UTTERANCES_PER_MINIBATCH)
 
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
-with tf.Session(graph=ctc_decoder.graph, config=config):
-    ctc_decoder.restore(
-        'saved_models/molder.esat.kuleuven.be/2016-11-22.mdl')
+with tf.Session(graph=las_decoder.graph, config=config):
+    las_decoder.restore(
+        'saved_models/promising_las_timit_0.001_96_2/2016-11-25.mdl')
     test_batch = test_dispenser.get_batch()
+    #TODO: check input dimension!!! Could be wrong.
     inputs = test_batch[0]
     targets = test_batch[1]
-    hypothesis, error = ctc_decoder(inputs, targets)
+    decoded = las_decoder(inputs)
 
-decoded = test_dispenser.target_coder.decode(hypothesis[0])
+def greedy_search(network_output):
+    """ Extract the largets char probability."""
+    utterance_char_batches = []
+    for batch in range(0, network_output.shape[0]):
+        utterance_chars_nos = []
+        for time in range(0, network_output.shape[1]):
+            utterance_chars_nos.append(np.argmax(network_output[batch, time, :]))
+        utterance_chars = test_dispenser.target_coder.decode(
+            utterance_chars_nos)
+        utterance_char_batches.append(utterance_chars)
+    return np.array(utterance_char_batches)
 
-print(decoded)
-print(error)
+decoded_targets = greedy_search(decoded)
+
+print(test_dispenser.target_coder.decode(targets[0]))
+print(decoded_targets[0])
+
+plt.imshow(decoded[0, :, :])
+plt.show()
