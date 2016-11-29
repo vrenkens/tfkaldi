@@ -207,10 +207,20 @@ with tf.Session(graph=ctc_trainer.graph, config=config):
             ctc_trainer.save_model(filename)
             print("Model saved in file: %s" % filename)
 
+            print("plot values saved at: " + filename)
             #run the network on the test data set.
             inputs, targets = test_dispenser.get_batch()
             test_loss = ctc_trainer.evaluate(inputs, targets)
             print("test loss: ", test_loss)
+
+            filename = "saved_models/" \
+               + socket.gethostname()  + '/' \
+               + today \
+               + ".pkl"
+            pickle.dump([epoch_loss_lst, epoch_loss_lst_val, test_loss, LEARNING_RATE,
+                         LEARNING_RATE_DECAY, epoch, UTTERANCES_PER_MINIBATCH,
+                         general_settings, listener_settings],
+                        open(filename, "wb"))
         # if the training error is lower than the validation error for
         # interval iterations stop..
         #interval = 50

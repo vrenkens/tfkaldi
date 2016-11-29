@@ -610,58 +610,100 @@ class CTCTrainer(Trainer):
                      target_seq_length):
         '''
         Compute the loss
-
         Creates the operation to compute the CTC loss for every input
         frame (if you want to have a different loss function, overwrite this
         method)
-
         Args:
-            targets: a list that contains a Bx1 tensor containing the targets
-                for eacht time step where B is the batch size
-            logits: a list that contains a BxO tensor containing the output
-                logits for eacht time step where O is the output dimension
+            targets: a [batch_size, max_target_length, 1] tensor containing the
+                targets
+            logits: a [batch_size, max_input_length, dim] tensor containing the
+                inputs
             logit_seq_length: the length of all the input sequences as a vector
             target_seq_length: the length of all the target sequences as a
                 vector
-
         Returns:
             a scalar value containing the loss
         '''
 
-        idx, vals, shape = self.target_tensor_to_sparse(targets, target_seq_length)
-        sparse_targets = tf.cast(tf.SparseTensor(idx, vals, shape), tf.int32)
-        return tf.reduce_sum(tf.nn.ctc_loss(tf.pack(logits), sparse_targets,
-                                            logit_seq_length, time_major=False))
+        with tf.name_scope('CTC_loss'):
+            #get the batch size
+            batch_size = int(targets.get_shape()[0])
+
+            #convert the targets into a sparse tensor representation
+            indices = tf.concat(0, [tf.concat(
+                1, [tf.expand_dims(tf.tile([s], [target_seq_length[s]]), 1),
+                    tf.expand_dims(tf.range(target_seq_length[s]), 1)])
+                                    for s in range(batch_size)])
+
+            values = tf.reshape(
+                seq_convertors.seq2nonseq(targets, target_seq_length), [-1])
+
+            shape = [batch_size, int(targets.get_shape()[1])]
+
+            sparse_targets = tf.SparseTensor(tf.cast(indices, tf.int64), values,
+                                             shape)
+
+            loss = tf.reduce_sum(tf.nn.ctc_loss(logits, sparse_targets,
+                                                logit_seq_length,
+                                                time_major=False))
+        return loss
+
+    # def compute_loss(self, targets, logits, logit_seq_length,
+    #                  target_seq_length):
+    #     '''
+    #     Compute the loss
+
+    #     Creates the operation to compute the CTC loss for every input
+    #     frame (if you want to have a different loss function, overwrite this
+    #     method)
+
+    #     Args:
+    #         targets: a list that contains a Bx1 tensor containing the targets
+    #             for eacht time step where B is the batch size
+    #         logits: a list that contains a BxO tensor containing the output
+    #             logits for eacht time step where O is the output dimension
+    #         logit_seq_length: the length of all the input sequences as a vector
+    #         target_seq_length: the length of all the target sequences as a
+    #             vector
+
+    #     Returns:
+    #         a scalar value containing the loss
+    #     '''
+
+    #     idx, vals, shape = self.target_tensor_to_sparse(targets, target_seq_length)
+    #     sparse_targets = tf.cast(tf.SparseTensor(idx, vals, shape), tf.int32)
+    #     return tf.reduce_sum(tf.nn.ctc_loss(tf.pack(logits), sparse_targets,
+    #                                         logit_seq_length, time_major=False))
 
 
-    def target_tensor_to_sparse(self, target_tensor, target_seq_length):
-        '''Make tensorflow SparseTensor from target tensor of shape 
-           [numutterances_per_minibatch, max_target_length, 1] with each element
-           in the list being a list or array with the values of the target sequence
-           (e.g., the integer values of a character map for an ASR target string)
-        '''
-        target_tensor = tf.squeeze(target_tensor)
-        #target_list = tf.unpack(target_tensor)
-        zero = tf.constant(0, dtype=tf.int32)
-        non_zero_mask = tf.not_equal(tf.cast(target_tensor, tf.int32), zero)  
+    # def target_tensor_to_sparse(self, target_tensor, target_seq_length):
+    #     '''Make tensorflow SparseTensor from target tensor of shape 
+    #        [numutterances_per_minibatch, max_target_length, 1] with each element
+    #        in the list being a list or array with the values of the target sequence
+    #        (e.g., the integer values of a character map for an ASR target string)
+    #     '''
+    #     target_tensor = tf.squeeze(target_tensor)
+    #     #target_list = tf.unpack(target_tensor)
+    #     zero = tf.constant(0, dtype=tf.int32)
+    #     non_zero_mask = tf.not_equal(tf.cast(target_tensor, tf.int32), zero)  
 
-        target_seq_length_lst = tf.unpack(target_seq_length)
-        mask = []
-        for single_length in target_seq_length_lst:
-            ones_shape = tf.convert_to_tensor([1, single_length])
-            zeros_shape = tf.convert_to_tensor([1, self.max_target_length - single_length])
-            mask.append(tf.concat(1, 
-                                  [tf.ones(ones_shape),
-                                   tf.zeros(zeros_shape)]))
-        bool_mask = tf.cast(tf.concat(0, mask), tf.bool)
-        bool_mask.set_shape([self.numutterances_per_minibatch, self.max_target_length])
+    #     target_seq_length_lst = tf.unpack(target_seq_length)
+    #     mask = []
+    #     for single_length in target_seq_length_lst:
+    #         ones_shape = tf.convert_to_tensor([1, single_length])
+    #         zeros_shape = tf.convert_to_tensor([1, self.max_target_length - single_length])
+    #         mask.append(tf.concat(1, 
+    #                               [tf.ones(ones_shape),
+    #                                tf.zeros(zeros_shape)]))
+    #     bool_mask = tf.cast(tf.concat(0, mask), tf.bool)
+    #     bool_mask.set_shape([self.numutterances_per_minibatch, self.max_target_length])
 
-        indices = tf.where(bool_mask)   
-        vals = tf.boolean_mask(target_tensor, bool_mask)
-        shape = [self.numutterances_per_minibatch, self.max_target_length]
+    #     indices = tf.where(bool_mask)   
+    #     vals = tf.boolean_mask(target_tensor, bool_mask)
+    #     shape = [self.numutterances_per_minibatch, self.max_target_length]
         
-        idx = tf.cast(tf.convert_to_tensor(indices), tf.int64)
-        vls = tf.cast(tf.convert_to_tensor(vals), tf.int64)
-        shp = tf.cast(tf.convert_to_tensor(shape), tf.int64)
-        return idx, vls, shp
+    #     idx = tf.cast(tf.convert_to_tensor(indices), tf.int64)
+    #     vls = tf.cast(tf.convert_to_tensor(vals), tf.int64)
+    #     shp = tf.cast(tf.convert_to_tensor(shape), tf.int64)
+    #     return idx, vls, shp
 
