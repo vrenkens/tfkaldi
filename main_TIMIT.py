@@ -7,8 +7,8 @@ from neuralnetworks import nnet
 from processing import ark, prepare_data, feature_reader, batchdispenser, target_coder, target_normalizers, score
 
 #here you can set which steps should be executed. If a step has been executed in the past the result have been saved and the step does not have to be executed again (if nothing has changed)
-TRAINFEATURES = False
-TESTFEATURES = False
+TRAINFEATURES = True
+TESTFEATURES = True
 TRAIN = True
 TEST = True
 
