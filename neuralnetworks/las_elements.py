@@ -12,9 +12,9 @@ from tensorflow.python.ops.rnn_cell import RNNCell
 from tensorflow.python.util import nest
 
 # we are currenly in neuralnetworks, add it to the path.
-from neuralnetworks.classifiers.layer import LinearLayer
 from neuralnetworks.classifiers.layer import FFLayer
 from neuralnetworks.classifiers.layer import BLSTMLayer
+from neuralnetworks.classifiers.layer import PLSTMLayer
 from neuralnetworks.classifiers.activation import TfActivation
 from neuralnetworks.classifiers.activation import IdentityWrapper
 from neuralnetworks.classifiers.seq_convertors import seq2nonseq
@@ -32,21 +32,23 @@ class Listener(object):
     def __init__(self, lstm_dim, plstm_layer_no, output_dim, out_weights_std):
         """ Initialize the listener.
         """
-        self.output_dim = output_dim
-        self.lstm_dim = lstm_dim
-        self.plstm_layer_no = plstm_layer_no
-        self.output_dim = output_dim
+        self.output_dim = int(output_dim)
+        self.lstm_dim = int(lstm_dim)
+        self.plstm_layer_no = int(plstm_layer_no)
+        self.output_dim = int(output_dim)
 
         #the listener foundation is a classical bidirectional Long Short
         #term memory layer.
-        self.blstm_layer = BLSTMLayer(lstm_dim, pyramidal=False)
+        self.blstm_layer = PLSTMLayer(lstm_dim, pyramidal=False)
         #on top of are three pyramidal BLSTM layers.
-        self.plstm_layer = BLSTMLayer(lstm_dim, pyramidal=True)
+        self.plstm_layer = PLSTMLayer(lstm_dim, pyramidal=True)
         identity_activation = IdentityWrapper()
         self.ff_layer = FFLayer(output_dim, identity_activation,
                                 out_weights_std)
 
         self.reuse = None
+
+        debug_here()
 
     def __call__(self, input_features, sequence_lengths, reuse):
         """ Compute the output of the listener function. """
@@ -60,14 +62,14 @@ class Listener(object):
                 self.blstm_layer(input_features,
                                  sequence_lengths,
                                  reuse=self.reuse,
-                                 scope=("blstm_layer"))
+                                 scope="blstm_layer")
             #move on to the plstm outputs.
             for counter in range(self.plstm_layer_no):
                 hidden_values, sequence_lengths = \
                     self.plstm_layer(hidden_values,
                                      sequence_lengths,
                                      reuse=self.reuse,
-                                     scope=("plstm_layer_" + str(counter)))
+                                     scope="plstm_layer_" + str(counter))
 
             with tf.variable_scope('linear_layer', reuse=self.reuse):
                 hidden_shape = tf.Tensor.get_shape(hidden_values)
@@ -75,7 +77,6 @@ class Listener(object):
                 non_seq_output_values = self.ff_layer(non_seq_hidden)
                 output_values = nonseq2seq(non_seq_output_values, sequence_lengths,
                                            int(hidden_shape[1]))
-
 
         if self.reuse is None:
             self.reuse = True

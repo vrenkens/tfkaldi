@@ -5,6 +5,7 @@ from abc import ABCMeta, abstractmethod
 import tensorflow as tf
 import numpy as np
 from classifiers import seq_convertors
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 class Trainer(object):
     '''General class outlining the training environment of a classifier.'''
@@ -65,12 +66,13 @@ class Trainer(object):
                 name='output_seq_length')
 
             #compute the training outputs of the classifier
+            debug_here()
             trainlogits, logit_seq_length, self.modelsaver, self.control_ops =\
                 classifier(
                     self.inputs, self.input_seq_length, targets=self.targets,
                     target_seq_length=self.target_seq_length, is_training=True,
-                    reuse=False, scope='Classifier')
-
+                    reuse=None, scope='Classifier')
+  
             #compute the validation output of the classifier
             logits, _, _, _ = classifier(
                 self.inputs, self.input_seq_length, targets=self.targets,

@@ -159,3 +159,14 @@ class Batchnorm(Activation): # pylint: disable=too-few-public-methods
         return tf.contrib.layers.batch_norm(activations,
                                             is_training=is_training,
                                             reuse=reuse, scope='batch_norm')
+
+class IdentityWrapper(Activation):
+    """ A simple idintitiy activation which is intended for usage with
+        simple linear layers. """
+    def __init__(self, activation=None):
+        super(IdentityWrapper, self).__init__(activation)
+
+    def _apply_func(self, activations, is_training, reuse):
+        """ Simply return the inputs = activataions. """
+        return activations
+
