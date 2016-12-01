@@ -36,10 +36,10 @@ class Decoder(object):
                 tf.int32, shape=[1], name='seq_length')
 
             #create the decoding graph
-            logits, logits_seq_length, self.saver, _ =\
+            logits, logits_seq_length, self.saver, _ = \
                 classifier(
                     self.inputs, self.input_seq_length, targets=None,
-                    target_seq_length=None, is_training=True,
+                    target_seq_length=None, is_training=False,
                     reuse=False, scope='Classifier')
 
             #compute the outputs based on the classifier output logits
@@ -116,7 +116,7 @@ class Decoder(object):
         self.saver.restore(tf.get_default_session(), filename)
 
 class SimpleDecoder(Decoder):
-    '''Simple decoder that passes the output logits through a softmax'''
+    '''Simple decoder that passes the output logits through a softmax.'''
 
     def get_outputs(self, logits, logits_seq_length):
         '''
@@ -217,3 +217,47 @@ class CTCDecoder(Decoder):
         logprobs = decoded[-1]
 
         return target_sequences, logprobs
+
+
+class SimpleSeqDecoder(Decoder):
+    '''Simple decoder that passes the output logits through a softmax'''
+
+    def get_outputs(self, logits, logits_seq_length):
+        '''
+        Put the classifier output logits through a softmax
+
+        Args:
+            logits: A list containing a 1xO tensor for each timestep where O
+                is the classifier output dimension
+            logits_seq_length: the logits sequence length
+        Returns:
+            An NxO tensor containing posterior distributions
+        '''
+
+        return tf.nn.softmax(logits)
+
+    def process_decoded(self, decoded):
+        '''
+        do nothing
+
+        Args:
+            decoded: the outputs of the decoding graph
+
+        Returns:
+            the outputs of the decoding graph
+        '''
+
+        return decoded
+
+    def greedy_search(self, network_output):
+        """ Extract the targets char probability."""
+        utterance_char_batches = []
+        for batch in range(0, network_output.shape[0]):
+            utterance_chars_nos = []
+            for time in range(0, network_output.shape[1]):
+                utterance_chars_nos.append(np.argmax(network_output[batch, time, :]))
+            utterance_chars = test_dispenser.target_coder.decode(
+                utterance_chars_nos)
+            utterance_char_batches.append(utterance_chars)
+        return np.array(utterance_char_batches)
+            

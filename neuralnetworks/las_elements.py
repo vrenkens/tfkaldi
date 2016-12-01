@@ -21,7 +21,7 @@ from neuralnetworks.classifiers.seq_convertors import seq2nonseq
 from neuralnetworks.classifiers.seq_convertors import nonseq2seq
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
-#disable the too few public methods complaint
+# disable the too few public methods complaint
 # pylint: disable=R0903
 
 
@@ -45,10 +45,7 @@ class Listener(object):
         identity_activation = IdentityWrapper()
         self.ff_layer = FFLayer(output_dim, identity_activation,
                                 out_weights_std)
-
         self.reuse = None
-
-        debug_here()
 
     def __call__(self, input_features, sequence_lengths, reuse):
         """ Compute the output of the listener function. """
@@ -137,10 +134,10 @@ class AttendAndSpellCell(RNNCell):
     """
     def __init__(self, las_model, decoder_state_size=40,
                  feedforward_hidden_units=56, feedforward_hidden_layers=3):
-        self.feedforward_hidden_units = feedforward_hidden_units
-        self.feedforward_hidden_layers = feedforward_hidden_layers
+        self.feedforward_hidden_units = int(feedforward_hidden_units)
+        self.feedforward_hidden_layers = int(feedforward_hidden_layers)
         #the decoder state size must be equal to the RNN size.
-        self.dec_state_size = decoder_state_size
+        self.dec_state_size = int(decoder_state_size)
         self.high_lvl_features = None
         self.psi = None
         self.las_model = las_model
@@ -430,7 +427,7 @@ class RNN(object):
         self.blocks = []
         lstm_init = tf.random_uniform_initializer(minval=-0.1, maxval=0.1)
         for _ in range(0, self.layer_number):
-            self.blocks.append(rnn_cell.LSTMCell(lstm_dim,
+            self.blocks.append(rnn_cell.LSTMCell(int(lstm_dim),
                                                  use_peepholes=True,
                                                  state_is_tuple=True,
                                                  initializer=lstm_init))

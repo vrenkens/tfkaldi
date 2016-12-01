@@ -1,32 +1,39 @@
 '''@file main.py
 run this file to go through the neural net training procedure, look at the config files in the config directory to modify the settings'''
 
-
-#from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import, division, print_function
 
 
 import os
 from six.moves import configparser
 #from neuralnetworks.nnet import Nnet 
-from neuralnetworks.listen_net import Nnet
+#from neuralnetworks.listen_net import Nnet
+from neuralnetworks.las_net import Nnet
 from processing import ark, prepare_data, feature_reader, batchdispenser, \
 target_coder, target_normalizers, score
 from shutil import copyfile
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
-#here you can set which steps should be executed. If a step has been executed in the past the result have been saved and the step does not have to be executed again (if nothing has changed)
+#here you can set which steps should be executed.
+#If a step has been executed in the past the result have been saved and the step does not have to be executed again
+#(if nothing has changed)
 TRAINFEATURES = False
 TESTFEATURES = False
 TRAIN = True
-TEST = True
+TEST = False
 
 #read config file
 config = configparser.ConfigParser()
-#config.read('config/config_TIMIT.cfg')
-config.read('config/config_TIMIT_listener.cfg')
+
+#config_path = 'config/config_TIMIT.cfg'
+#config_path = 'config/config_TIMIT_listener.cfg'
+config_path = 'config/config_TIMIT_las.cfg'
+
+#config.read()
+config.read(config_path)
 current_dir = os.getcwd()
 
-#compute the features of the training set for DNN training if they are different then the GMM features
+#compute the features of the training set for DNN training if they are different then the GMM features.
 if TRAINFEATURES:
     feat_cfg = dict(config.items('dnn-features'))
 
@@ -39,7 +46,7 @@ if TRAINFEATURES:
     print('------- computing cmvn stats ----------')
     prepare_data.compute_cmvn(config.get('directories', 'train_features') + '/' + feat_cfg['name'])
 
-#compute the features of the training set for DNN testing if they are different then the GMM features
+#compute the features of the training set for DNN testing if they are different then the GMM features.
 if TESTFEATURES:
     feat_cfg = dict(config.items('dnn-features'))
 
@@ -59,11 +66,10 @@ reader = ark.ArkReader(
 _, features, _ = reader.read_next_utt()
 input_dim = features.shape[1]
 
-debug_here()
-
 #create the coder
-coder = target_coder.PhonemeEncoder(target_normalizers.timit_phone_norm)
+#coder = target_coder.PhonemeEncoder(target_normalizers.timit_phone_norm)
 
+coder = target_coder.PhonemeEncoder(target_normalizers.timit_phone_norm)
 #create the neural net
 nnet = Nnet(config, input_dim, coder.num_labels)
 
@@ -136,9 +142,10 @@ if TEST:
     #compute the character error rate
     CER = score.CER(nbests, references)
 
-    print('character error rate: %f' % CER)
+    print('phoneme error rate: %f' % CER)
 
     print('Backing up cfg for future reference')
-    copyfile('config/config_TIMIT.cfg,',
-              config.get('savedir') + 'config_TIMIT.cfg')
+    copyfile(config_path,
+             config.get('directories', 'expdir') + "/" \
+             + config.get('nnet', 'name') + '/used_config.cfg')
 

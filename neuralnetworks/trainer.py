@@ -66,7 +66,6 @@ class Trainer(object):
                 name='output_seq_length')
 
             #compute the training outputs of the classifier
-            debug_here()
             trainlogits, logit_seq_length, self.modelsaver, self.control_ops =\
                 classifier(
                     self.inputs, self.input_seq_length, targets=self.targets,
@@ -500,21 +499,24 @@ class CrossEnthropyTrainer(Trainer):
         '''the cross-enthropy
 
         Args:
-            outputs: the validation output, which is a matrix containing the
-                label probabilities of size [batch_size, max_input_length, dim].
+            outputs: the validation output, which is a list containing the
+                label probabilities of size [batch_size][max_input_length, dim].
             targets: a list containing the ground truth target labels
         '''
-
+        outputs = np.array(outputs)
+        debug_here()
         cross_enthropy = 0
         num_frames = 0
 
-        for utt in range(outputs.shape[0]):
-            num_frames += targets[utt].size
+        #for utt in range(outputs.shape[0]):
+        #    num_frames += targets[utt].size
 
-            cross_enthropy += -np.log(
-                outputs[utt, np.arange(targets[utt].size), targets[utt]]).sum()
+        #    cross_enthropy += -np.log(
+        #        outputs[utt, np.arange(targets[utt].size), targets[utt]]).sum()
 
-        return cross_enthropy/num_frames
+        #return cross_enthropy/num_frames
+        return 0
+
 
 class CTCTrainer(Trainer):
     '''A trainer that minimises the CTC loss, the output sequences'''
@@ -623,8 +625,8 @@ class CTCTrainer(Trainer):
         '''the Label Error Rate for the decoded labels
 
         Args:
-            outputs: the validation output, which is a matrix containing the
-                decoded labels of size [batch_size, max_decoded_length]. the
+            outputs: the validation output, which is a list containing the
+                decoded labels of size [batch_size][max_decoded_length]. the
                 output sequences are padded with -1
             targets: a list containing the ground truth target labels
         '''

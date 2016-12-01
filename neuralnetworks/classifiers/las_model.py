@@ -1,6 +1,7 @@
 '''
 This module implements a listen attend and spell classifier.
 '''
+from __future__ import absolute_import, division, print_function
 
 import sys
 import collections
@@ -77,7 +78,8 @@ class LasModel(Classifier):
 
         print('\x1b[01;32m' + "Adding LAS conputations:")
         print("    training_graph:", is_training)
-        print("    decoding_graph:", self.decoding, '\x1b[0m')
+        print("    decoding_graph:", self.decoding)
+        print('\x1b[0m')
 
         if is_training is True:
             with tf.variable_scope("input_noise"):
@@ -111,8 +113,8 @@ class LasModel(Classifier):
             high_level_features, feature_seq_length \
                 = self.listener(inputs, seq_length, reuse)
 
-            if self.decoding is not True:
-                print('adding attend and spell computations to the graph...')
+            if (self.decoding is not True) and (is_training is True):
+                print('adding training attend and spell computations to the graph...')
                 #training mode
                 self.attend_and_spell_cell.set_features(high_level_features,
                                                         feature_seq_length)
@@ -121,11 +123,12 @@ class LasModel(Classifier):
                 logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
                                               inputs=target_one_hot,
                                               initial_state=zero_state,
-                                              time_major=False,
+                                              sequence_length=target_seq_length,
                                               scope='attend_and_spell')
+                logits_sequence_length = target_seq_length
             else:
-                print('adding attend and spell computations to the graph...')
 
+                print('adding decoding attend and spell computations to the graph...')
                 self.attend_and_spell_cell.set_features(high_level_features,
                                                         feature_seq_length)
                 cell_state = self.attend_and_spell_cell.zero_state(
@@ -135,12 +138,6 @@ class LasModel(Classifier):
                     _, _, one_hot_char, _ = cell_state
                     logits = tf.expand_dims(one_hot_char, 1)
 
-                    #zero_init = tf.constant_initializer(0)
-                    #time = tf.get_variable('time',
-                    #                       shape=[],
-                    #                       dtype=self.dtype,
-                    #                      trainable=False,
-                    #                      initializer=zero_init)
                     time = tf.constant(0, self.dtype, shape=[])
 
                     #turn time from a variable into a tensor.
@@ -172,7 +169,7 @@ class LasModel(Classifier):
         print("Logits tensor shape:", tf.Tensor.get_shape(logits))
 
         #None is returned as no control ops are defined yet.
-        return logits, None, saver, None
+        return logits, logits_sequence_length, saver, None
 
     def cond(self, loop_vars):
         ''' Condition in charge of the attend and spell decoding

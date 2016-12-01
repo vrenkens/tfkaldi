@@ -2,6 +2,7 @@
 '''
 This module implements a listen attend and spell classifier.
 '''
+from __future__ import absolute_import, division, print_function
 
 import sys
 import collections
@@ -50,10 +51,6 @@ class ListenerModel(Classifier):
         self.target_label_no = self.gen_set.target_label_no
         self.decoding = decoding
 
-        #decoding constants
-        self.eos_treshold = 0.8
-        self.max_decoding_steps = 4000
-
         #store the two model parts.
         self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no, 
                                  self.lst_set.output_dim, self.lst_set.out_weights_std)
@@ -72,8 +69,8 @@ class ListenerModel(Classifier):
         if is_training is True:
             with tf.variable_scope("input_noise"):
                 #add input noise with a standart deviation of stddev.
-                stddev = 0.65
-                inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs  
+                stddev = 0.6
+                inputs = tf.random_normal(tf.shape(inputs), stddev=stddev) + inputs  
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')

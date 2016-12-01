@@ -101,7 +101,6 @@ class BLSTMLayer(object):
         """
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
-            debug_here()
             #create the lstm cell that will be used for the forward and backward
             #pass
             lstm_cell = rnn_cell.LSTMCell(self.num_units,

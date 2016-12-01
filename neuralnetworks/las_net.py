@@ -6,17 +6,16 @@ import shutil
 import os
 import itertools
 import tensorflow as tf
-import pickle
 import neuralnetworks.classifiers.activation as act
 
-from neuralnetworks.classifiers.listener_model import ListenerModel
+from neuralnetworks.classifiers.las_model import LasModel
 from neuralnetworks.classifiers.las_model import GeneralSettings
 from neuralnetworks.classifiers.las_model import ListenerSettings
-from neuralnetworks.trainer import CTCTrainer
-from neuralnetworks.decoder import CTCDecoder
+from neuralnetworks.classifiers.las_model import AttendAndSpellSettings
+from neuralnetworks.trainer import CrossEnthropyTrainer
+from neuralnetworks.decoder import SimpleSeqDecoder
 
 from IPython.core.debugger import Tracer; debug_here = Tracer();
-
 
 class Nnet(object):
     '''a class for using a DBLTSM with CTC for ASR'''
@@ -49,16 +48,20 @@ class Nnet(object):
 
         #create a Listener model, which will be paired with CTC later.
         #"mel_feature_no, batch_size, target_label_no, dtype"
-        self.general_settings = GeneralSettings(self.feat_conf['nfilt']*3,
-                                                self.net_conf['numutterances_per_minibatch'],
-                                                num_labels + 1, tf.float32)
+        self.gset = GeneralSettings(int(self.feat_conf['nfilt']),
+                                    int(self.net_conf['numutterances_per_minibatch']),
+                                    int(num_labels), tf.float32)
         #lstm_dim, plstm_layer_no, output_dim, out_weights_std
-        self.listener_settings = ListenerSettings(self.net_conf['num_units'],
-                                                  self.net_conf['num_layers'],
-                                                  self.net_conf['output_dim'],
-                                                  0.1)
+        self.lset = ListenerSettings(int(self.net_conf['num_units']),
+                                     int(self.net_conf['num_layers']),
+                                     int(self.net_conf['output_dim']),
+                                     0.1)
+        #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
+        self.asset = AttendAndSpellSettings(self.net_conf['state_size'],
+                                            self.net_conf['net_size'],
+                                            self.net_conf['n_hidden'])
 
-        self.classifier = ListenerModel(self.general_settings, self.listener_settings)
+        self.classifier = LasModel(self.gset, self.lset, self.asset)
 
         #create the wavenet
         #self.classifier = Wavenet(num_labels + 1, int(self.net_conf['num_layers']),
@@ -106,13 +109,12 @@ class Nnet(object):
 
         #put the DBLSTM in a CTC training environment
         print('building the training graph')
-        trainer = CTCTrainer(
+        trainer = CrossEnthropyTrainer(
             self.classifier, self.input_dim, dispenser.max_input_length,
             dispenser.max_target_length,
             float(self.net_conf['initial_learning_rate']),
             float(self.net_conf['learning_rate_decay']),
-            num_steps, numutterances_per_minibatch,
-            int(self.net_conf['beam_width']))
+            num_steps, numutterances_per_minibatch)
 
         #start the visualization if it is requested
         if self.net_conf['visualise'] == 'True':
@@ -122,10 +124,6 @@ class Nnet(object):
             trainer.start_visualization(self.net_conf['savedir'] + '/logdir')
 
         #start a tensorflow session
-        loss_lst = []
-        val_lst = []
-
-
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True #pylint: disable=E1101
         with tf.Session(graph=trainer.graph, config=config):
@@ -145,7 +143,6 @@ class Nnet(object):
                 trainer.save_trainer(self.net_conf['savedir']
                                      + '/validation/validated')
                 num_retries = 0
-                val_lst.append([step, validation_loss])
 
             #start the training iteration
             while step < num_steps:
@@ -155,7 +152,6 @@ class Nnet(object):
 
                 #update the model
                 loss, lr = trainer.update(batch_data, batch_labels)
-                loss_lst.append([step, loss])
 
                 #print the progress
                 print ('step %d/%d loss: %f, learning rate: %f'
@@ -220,9 +216,6 @@ class Nnet(object):
 
             #save the final model
             trainer.save_model(self.net_conf['savedir'] + '/final')
-            #save the training plots.
-            pickle.dump([loss_lst, val_lst], open(self.net_conf['savedir']+ "/" \
-                                                  + 'plot.pkl', "wb"))
 
     def decode(self, reader, target_coder):
         '''
@@ -241,13 +234,12 @@ class Nnet(object):
 
         #create a decoder
         print('building the decoding graph')
+        self.gset = 1
         decoding_classifier = \
-            ListenerModel(self.general_settings, self.listener_settings, decoding=True)
-        decoder = CTCDecoder(decoding_classifier, self.input_dim,
-                             reader.max_input_length,
-                             int(self.net_conf['beam_width']))
-
-
+            LasModel(self.general_settings, self.listener_settings, decoding=True)
+        decoder = SimpleSeqDecoder(decoding_classifier, self.input_dim,
+                                   reader.max_input_length,
+                                   int(self.net_conf['beam_width']))
         #start tensorflow session
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True #pylint: disable=E1101
