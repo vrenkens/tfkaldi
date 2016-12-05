@@ -1,5 +1,6 @@
 '''@file trainer.py
 neural network trainer environment'''
+from __future__ import print_function
 
 from abc import ABCMeta, abstractmethod
 import tensorflow as tf
@@ -495,6 +496,34 @@ class CrossEnthropyTrainer(Trainer):
 
         return tf.nn.softmax(logits)
 
+
+    @staticmethod
+    def greedy_search(network_output):
+        """ Extract the targets char probability"""
+        utterance_char_batches = []
+        for batch in range(0, network_output.shape[0]):
+            utterance_chars_nos = []
+            for time in range(0, network_output.shape[1]):
+                utterance_chars_nos.append(np.argmax(network_output[batch, time, :]))
+            utterance_char_batches.append(np.array(utterance_chars_nos))
+        return utterance_char_batches
+
+    @staticmethod
+    def edit_distance(seq1, seq2):
+        """ Calculate edit distance between sequences x and y using
+            matrix dynamic programming.  Return distance.
+            source, Ben Langmead:
+            http://www.cs.jhu.edu/~langmea/resources/lecture_notes/dp_and_edit_dist.pdf
+        """
+        dmat = np.zeros((len(seq1)+1, len(seq2)+1), dtype=int)
+        dmat[0, 1:] = range(1, len(seq2)+1)
+        dmat[1:, 0] = range(1, len(seq1)+1)
+        for i in range(1, len(seq1)+1):
+            for j in range(1, len(seq2)+1):
+                delt = 1 if seq1[i-1] != seq2[j-1] else 0
+                dmat[i, j] = min(dmat[i-1, j-1]+delt, dmat[i-1, j]+1, dmat[i, j-1]+1)
+        return dmat[len(seq1), len(seq2)]
+
     def validation_metric(self, outputs, targets):
         '''the cross-enthropy
 
@@ -503,19 +532,21 @@ class CrossEnthropyTrainer(Trainer):
                 label probabilities of size [batch_size][max_input_length, dim].
             targets: a list containing the ground truth target labels
         '''
+        #TODO: use seq_length!!!
         outputs = np.array(outputs)
-        debug_here()
-        cross_enthropy = 0
+        decoded_outputs = self.greedy_search(outputs)
+        
         num_frames = 0
+        tot_lev = 0
+        for utt_no in range(0, len(decoded_outputs)):
+            num_frames += targets[utt_no].size
+            tot_lev = tot_lev + self.edit_distance(decoded_outputs[utt_no], 
+                                                   targets[utt_no])
+        norm_lev = tot_lev/num_frames
+        return norm_lev
 
-        #for utt in range(outputs.shape[0]):
-        #    num_frames += targets[utt].size
 
-        #    cross_enthropy += -np.log(
-        #        outputs[utt, np.arange(targets[utt].size), targets[utt]]).sum()
 
-        #return cross_enthropy/num_frames
-        return 0
 
 
 class CTCTrainer(Trainer):
