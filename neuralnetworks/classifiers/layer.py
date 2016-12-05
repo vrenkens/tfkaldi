@@ -1,5 +1,7 @@
 '''@file layer.py
 Neural network layers '''
+from __future__ import absolute_import, division, print_function
+
 
 import tensorflow as tf
 from tensorflow.python.ops import rnn_cell

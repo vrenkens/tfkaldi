@@ -11,6 +11,7 @@ from six.moves import configparser
 from neuralnetworks.las_net import Nnet
 from processing import ark, prepare_data, feature_reader, batchdispenser, \
 target_coder, target_normalizers, score
+
 from shutil import copyfile
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
@@ -69,7 +70,7 @@ input_dim = features.shape[1]
 #create the coder
 #coder = target_coder.PhonemeEncoder(target_normalizers.timit_phone_norm)
 
-coder = target_coder.PhonemeEncoder(target_normalizers.timit_phone_norm)
+coder = target_coder.LasPhonemeEncoder(target_normalizers.timit_phone_norm_las)
 #create the neural net
 nnet = Nnet(config, input_dim, coder.num_labels)
 

@@ -127,8 +127,7 @@ class LasModel(Classifier):
                                               scope='attend_and_spell')
                 logits_sequence_length = target_seq_length
             else:
-
-                print('adding decoding attend and spell computations to the graph...')
+                print('adding attend and spell computations to the graph...')
                 self.attend_and_spell_cell.set_features(high_level_features,
                                                         feature_seq_length)
                 cell_state = self.attend_and_spell_cell.zero_state(
@@ -138,6 +137,12 @@ class LasModel(Classifier):
                     _, _, one_hot_char, _ = cell_state
                     logits = tf.expand_dims(one_hot_char, 1)
 
+                    #zero_init = tf.constant_initializer(0)
+                    #time = tf.get_variable('time',
+                    #                       shape=[],
+                    #                       dtype=self.dtype,
+                    #                      trainable=False,
+                    #                      initializer=zero_init)
                     time = tf.constant(0, self.dtype, shape=[])
 
                     #turn time from a variable into a tensor.
@@ -152,8 +157,6 @@ class LasModel(Classifier):
                                                          self.target_label_no])
                     shape_invariants = nest.pack_sequence_as(shape_invariants,
                                                              flat_invariants)
-
-
                     result = tf.while_loop(
                         self.cond, self.body, loop_vars=[loop_vars],
                         shape_invariants=[shape_invariants])
@@ -177,7 +180,7 @@ class LasModel(Classifier):
             are confident of having found an eos token or if a maximum time
             has been exeeded.'''
 
-        _, cell_state, time = loop_vars
+        _, cell_state, time, _, _ = loop_vars
         _, _, one_hot_char, _ = cell_state
 
         #the encoding table has the eos token ">" placed at position 0.
@@ -197,25 +200,37 @@ class LasModel(Classifier):
         ''' The body of the decoding while loop. Contains a manual enrolling
             of the attend and spell computations.  '''
 
-        prev_logits, cell_state, time = loop_vars
+        prev_logits, cell_state, time, done_mask, logits_sequence_length = loop_vars
         time = time + 1
 
         logits, cell_state = \
             self.attend_and_spell_cell(None, cell_state)
 
+        #update the sequence lengths.
+        time_vals = tf.ones([tf.Tensor.get_shape(done_mask)[0]], tf.float32)
+        seq_length_update_vals = time_vals*time
+        current_eos_prob_vec = logits[:, 1]
+
+        new_done_mask = tf.less_equal(current_eos_prob_vec, self.eos_treshold)
+        done_mask = tf.logical_or(new_done_mask, tf.logical_not(done_mask))
+        logits_sequence_length = tf.select(done_mask,
+                                           logits_sequence_length,
+                                           seq_length_update_vals)
+
+        #store the logits.
         logits = tf.expand_dims(logits, 1)
         logits = tf.concat(1, [prev_logits, logits])
         logits.set_shape([self.batch_size, None, self.target_label_no])
 
-        out_vars = DecodingTouple(logits, cell_state, time)
+        out_vars = DecodingTouple(logits, cell_state, time, done_mask, logits_sequence_length)
         return [out_vars]
 
 #create a tf style cell state tuple object to derive the actual tuple from.
 _DecodingStateTouple = \
     collections.namedtuple(
         "_DecodingStateTouple",
-        "logits, cell_state, time"
-        )
+        "logits, cell_state, time, done_mask, sequence_length")
+
 class DecodingTouple(_DecodingStateTouple):
     """ Tuple used by Attend and spell cells for `state_size`,
      `zero_state`, and output state.

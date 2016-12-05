@@ -1,6 +1,7 @@
 '''@file target_normalizers.py
 Contains functions for target normalization, this is database and task dependent
 '''
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 def aurora4_normalizer(transcription, alphabet):
     '''
@@ -69,5 +70,5 @@ def timit_phone_norm_las(transcription, _):
     """ Transorfm the transcitopn string into a list. We are expected foldet inputs in the
         text files we are loading. In the future the folding could be implemented here
         manually."""
-    normalized = ['<sos>'] + normalized + ['<eos>']
+    normalized = '<sos> ' + transcription + ' <eos>'
     return normalized

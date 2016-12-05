@@ -42,10 +42,11 @@ class Listener(object):
         self.blstm_layer = PLSTMLayer(lstm_dim, pyramidal=False)
         #on top of are three pyramidal BLSTM layers.
         self.plstm_layer = PLSTMLayer(lstm_dim, pyramidal=True)
-        identity_activation = IdentityWrapper()
-        self.ff_layer = FFLayer(output_dim, identity_activation,
-                                out_weights_std)
-        self.reuse = None
+        
+        #identity_activation = IdentityWrapper()
+        #self.ff_layer = FFLayer(output_dim, identity_activation,
+        #                        out_weights_std)
+        #self.reuse = None
 
     def __call__(self, input_features, sequence_lengths, reuse):
         """ Compute the output of the listener function. """
@@ -68,15 +69,16 @@ class Listener(object):
                                      reuse=self.reuse,
                                      scope="plstm_layer_" + str(counter))
 
-            with tf.variable_scope('linear_layer', reuse=self.reuse):
-                hidden_shape = tf.Tensor.get_shape(hidden_values)
-                non_seq_hidden = seq2nonseq(hidden_values, sequence_lengths)
-                non_seq_output_values = self.ff_layer(non_seq_hidden)
-                output_values = nonseq2seq(non_seq_output_values, sequence_lengths,
-                                           int(hidden_shape[1]))
+            #with tf.variable_scope('linear_layer', reuse=self.reuse):
+            #    hidden_shape = tf.Tensor.get_shape(hidden_values)
+            #    non_seq_hidden = seq2nonseq(hidden_values, sequence_lengths)
+            #    non_seq_output_values = self.ff_layer(non_seq_hidden)
+            #    output_values = nonseq2seq(non_seq_output_values, sequence_lengths,
+            #                               int(hidden_shape[1]))
+            output_values = hidden_values
 
-        if self.reuse is None:
-            self.reuse = True
+        #if self.reuse is None:
+        #    self.reuse = True
         return output_values, sequence_lengths
 
 
@@ -143,7 +145,7 @@ class AttendAndSpellCell(RNNCell):
         self.las_model = las_model
 
         #Determines whether the post_context_rnn will be used.
-        self.type_two = True
+        self.type_two = False
 
         #--------------------Create network functions-------------------------#
         # TODO: Move outside the cell
@@ -323,13 +325,6 @@ class AttendAndSpellCell(RNNCell):
                     #scalar_energy_lst = []
                     #for loop running trough the high level features.
                     #assert len(high level features) == U.
-                    #for psi in self.psi:
-                    #    scalar_energy = tf.reduce_sum(psi*phi, reduction_indices=1,
-                    #                                  name='dot_sum')
-                    #    scalar_energy_lst.append(scalar_energy)
-                    # alpha = softmax(e_(i,u))
-                    #scalar_energy_tensor = tf.convert_to_tensor(scalar_energy_lst)
-                    #Alpha has the same shape as the scalar_energy_tensor
                 #Rewrite the loop above in matrix nontation for extra speed: 
                 #phi_3d shape: [batch_size, state_size, 1]                  
                 phi_3d = tf.expand_dims(phi, 2)
@@ -337,7 +332,7 @@ class AttendAndSpellCell(RNNCell):
                 # = [batch_size, time, 1]
                 energy_3d = tf.batch_matmul(self.psi, phi_3d, 
                                             name='scalar_energy_matmul')
-                scalar_energy = tf.squeeze(energy_3d)
+                scalar_energy = tf.squeeze(energy_3d, squeeze_dims=[2])
                 alpha = tf.nn.softmax(scalar_energy)
 
                 #record the scalar_enrgies and alphas for later analysis.
@@ -349,23 +344,15 @@ class AttendAndSpellCell(RNNCell):
 
                 ### find the context vector. ###
                     # c_i = sum(alpha*h_i)
-                    #context_vector = 0*context_vector
-                    #for time in range(0, len(self.high_lvl_features)):
-                        #reshaping from (batch_size,) to (batch_size,1) is
-                        #needed for broadcasting.
-                    #    current_alpha = tf.reshape(alpha[time, :],
-                    #                               [self.las_model.batch_size,
-                    #                                1])
-                    #    context_vector = (context_vector
-                    #                      + current_alpha*self.high_lvl_features[time])
+                    #context_vector = 0*context_vector                    
                 # Rewrite for-loop in vector notation for improved speed.
                 # alpha_3d has shape: [batch_size, 1 , time].
                 alpha_3d = tf.expand_dims(alpha, 1)
                 # [batch_size, 1 , time] * [batch_size, time, state_dim]
-                # = [batch_size, 1, state_dim]
+                # = [batch_size, 1, state_dim]                
                 context_vector_3d = tf.batch_matmul(alpha_3d, self.high_lvl_features,
                                                     name='context_matmul')
-                context_vector = tf.squeeze(context_vector_3d)
+                context_vector = tf.squeeze(context_vector_3d, squeeze_dims=[1])
 
 
 
