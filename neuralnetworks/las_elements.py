@@ -24,18 +24,26 @@ from IPython.core.debugger import Tracer; debug_here = Tracer();
 # disable the too few public methods complaint
 # pylint: disable=R0903
 
-
 class Listener(object):
     """
     A set of pyramidal blstms, which compute high level audio features.
     """
     def __init__(self, lstm_dim, plstm_layer_no, output_dim, out_weights_std):
         """ Initialize the listener.
+
+        Args:
+            lstm_dim: The number of LSTM cells per bidirectional layer in the listener.
+            plstm_layer_no: The number of plstm compression layers, every layer leads
+                            to a time compression by a factor of two.
+            output_dim: The output dimension of the listener, for use with CTC.
+                        Setting this to NONE produces no output layer.
+            out_weights_std: The initial weight initialization standart deviation value.
         """
-        self.output_dim = int(output_dim)
         self.lstm_dim = int(lstm_dim)
         self.plstm_layer_no = int(plstm_layer_no)
-        self.output_dim = int(output_dim)
+        self.output_dim = output_dim
+        if output_dim is not None:
+            self.output_dim = int(self.output_dim)
 
         #the listener foundation is a classical bidirectional Long Short
         #term memory layer.
@@ -43,44 +51,39 @@ class Listener(object):
         #on top of are three pyramidal BLSTM layers.
         self.plstm_layer = PLSTMLayer(lstm_dim, pyramidal=True)
         
-        #identity_activation = IdentityWrapper()
-        #self.ff_layer = FFLayer(output_dim, identity_activation,
-        #                        out_weights_std)
-        #self.reuse = None
+        #set an output dimension, when using the Listener together with CTC.
+        if self.output_dim != None:
+            identity_activation = IdentityWrapper()
+            self.ff_layer = FFLayer(output_dim, identity_activation,
+                                    out_weights_std)
 
     def __call__(self, input_features, sequence_lengths, reuse):
         """ Compute the output of the listener function. """
         #compute the base layer blstm output.
-
-        if reuse is True:
-            self.reuse = True
-
-        with tf.variable_scope(type(self).__name__, reuse=self.reuse):
+        with tf.variable_scope(type(self).__name__, reuse=reuse):
             hidden_values, sequence_lengths = \
                 self.blstm_layer(input_features,
                                  sequence_lengths,
-                                 reuse=self.reuse,
+                                 reuse=reuse,
                                  scope="blstm_layer")
             #move on to the plstm outputs.
             for counter in range(self.plstm_layer_no):
                 hidden_values, sequence_lengths = \
                     self.plstm_layer(hidden_values,
                                      sequence_lengths,
-                                     reuse=self.reuse,
+                                     reuse=reuse,
                                      scope="plstm_layer_" + str(counter))
 
-            #with tf.variable_scope('linear_layer', reuse=self.reuse):
-            #    hidden_shape = tf.Tensor.get_shape(hidden_values)
-            #    non_seq_hidden = seq2nonseq(hidden_values, sequence_lengths)
-            #    non_seq_output_values = self.ff_layer(non_seq_hidden)
-            #    output_values = nonseq2seq(non_seq_output_values, sequence_lengths,
-            #                               int(hidden_shape[1]))
+        if self.output_dim != None:
+            with tf.variable_scope('linear_layer', reuse=reuse):
+                hidden_shape = tf.Tensor.get_shape(hidden_values)
+                non_seq_hidden = seq2nonseq(hidden_values, sequence_lengths)
+                non_seq_output_values = self.ff_layer(non_seq_hidden)
+                output_values = nonseq2seq(non_seq_output_values, sequence_lengths,
+                                           int(hidden_shape[1]))
+        else:
             output_values = hidden_values
-
-        #if self.reuse is None:
-        #    self.reuse = True
         return output_values, sequence_lengths
-
 
 #create a tf style cell state tuple object to derive the actual tuple from.
 _AttendAndSpellStateTouple = \
@@ -141,23 +144,22 @@ class AttendAndSpellCell(RNNCell):
         #the decoder state size must be equal to the RNN size.
         self.dec_state_size = int(decoder_state_size)
         self.high_lvl_features = None
+        self.high_lvl_feature_dim = None
         self.psi = None
+        
         self.las_model = las_model
 
         #Determines whether the post_context_rnn will be used.
         self.type_two = False
 
         #--------------------Create network functions-------------------------#
-        # TODO: Move outside the cell
         # Feed-forward layer custom parameters. Vincent knows more about these.
         activation = None
         activation = TfActivation(activation, tf.nn.relu)
 
-        state_net_dimension = FFNetDimension(self.dec_state_size,
-                                             self.feedforward_hidden_units,
+        state_net_dimension = FFNetDimension(self.feedforward_hidden_units,
                                              self.feedforward_hidden_units,
                                              self.feedforward_hidden_layers)
-
         self.state_net = FeedForwardNetwork(state_net_dimension,
                                             activation, name='state_net')
         # copy the state net any layer settings
@@ -173,8 +175,6 @@ class AttendAndSpellCell(RNNCell):
                                     name='post_context_rnn')
 
         char_net_dimension = FFNetDimension(
-            input_dim=self.dec_state_size
-            +         self.las_model.listener.output_dim,
             output_dim=self.las_model.target_label_no,
             num_hidden_units=self.feedforward_hidden_units,
             num_hidden_layers=self.feedforward_hidden_layers)
@@ -183,20 +183,16 @@ class AttendAndSpellCell(RNNCell):
                                            activation,
                                            name='char_net')
 
-        #---------------------One hot char selection variables----------------#
-        self.ones = None
-        self.one_hot_char_shape = None
-
-
     def set_features(self, high_lvl_features, feature_seq_lengths):
         ''' Set the features when available, storing the features in the
             object makes the cell call simpler.'''
 
         self.high_lvl_features = high_lvl_features
+        feature_shape = tf.Tensor.get_shape(high_lvl_features)
 
         with tf.variable_scope("compute_psi"):
-            print("     Feature dimension:",
-                  tf.Tensor.get_shape(high_lvl_features))
+            print("     Feature dimension:", feature_shape)
+            self.high_lvl_feature_dim = feature_shape[2]
             feature_shape = tf.Tensor.get_shape(high_lvl_features)
             non_seq_features = seq2nonseq(high_lvl_features, feature_seq_lengths)
             non_seq_psi = self.featr_net(non_seq_features)
@@ -221,9 +217,14 @@ class AttendAndSpellCell(RNNCell):
 
     def zero_state(self, batch_size, dtype):
         """Return an initial state for the Attend and state cell.
-            @returns an StateTouple object filled with the state variables.
+        Args:
+            batch_size: The size of the minibatches, which are going to be fed into
+                        this instantiation of this classifier.
+            dtype: The data type used for the model.
+        Returns:
+            A StateTouple object filled with the state variables.
         """
-        #the batch_size has to be fixed in order to be able to corretly
+        #The batch_size has to be fixed in order to be able to corretly
         #return the state_sizes, should self.state_size() be called before
         #the zero states are created.
         assert batch_size == self.las_model.batch_size
@@ -252,29 +253,120 @@ class AttendAndSpellCell(RNNCell):
             # The dimension of the context vector is determined by the listener
             # output dimension.
             zero_context_np = np.zeros([batch_size,
-                                        self.las_model.listener.output_dim])
+                                        self.high_lvl_feature_dim])
             context_vector = tf.constant(zero_context_np, dtype) 
-            context_vector = tf.identity(context_vector)
+            #context_vector = tf.identity(context_vector)
             print("  context_vector shape:",
                   tf.Tensor.get_shape(context_vector))
 
         return StateTouple(pre_context_states, post_context_states,
                            one_hot_char, context_vector)
 
+    @staticmethod
+    def select_out_or_target(groundtruth_char, one_hot_char):
+        """ Select the last system output value, or the groundtrough.
+            The probability of picking the ground trouth value is
+            given by the hardcoded net_out_prob value. """
+
+        def pick_ground_truth():
+            """ Return the true value, from the set annotations."""
+            return groundtruth_char
+        def pick_last_output():
+            """ Return the last network output (sometimes wrong),
+                to expose the network to false predictions. """
+            return one_hot_char
+        def pred():
+            """ Return the network output net_out_prob*100 percent
+                of the time."""
+            net_out_prob = 0.2
+            return tf.greater(rand_val, net_out_prob)
+
+        rand_val = tf.random_uniform(shape=(), minval=0.0, maxval=1.0,
+                                     dtype=tf.float32, seed=None,
+                                     name='random_uniform')
+        one_hot_char = tf.cond(pred(),
+                               pick_ground_truth,
+                               pick_last_output,
+                               name='truth_or_output_sel')
+        return one_hot_char
+
+    def greedy_decoding(self, logits):
+        """ Greedy decoding, select the output character, with the
+            largest corresponding logit value.
+        Args:
+            logits: the las output logits for the current batch.
+                    dimensions [batch_size, num_labels].
+        Returns:
+            one_hot_char: One hot encoded selected characters. 
+                          shape [batch_size, num_labels].
+        """
+        with tf.variable_scope("greedy_decoding"):
+            max_pos = tf.argmax(logits, 1, name='choose_max_prob_char')
+            one_hot_char = tf.one_hot(max_pos, self.las_model.target_label_no,
+                                      axis=1)
+        return one_hot_char
+
+
+    def attention_context(self, pre_context_out):
+        """ Compute the attention context based on the high lefel features
+            and the pre context state.
+        Args:
+            pre_context_out: The output of the state RNN, s_i in the las
+                             paper.
+        Returns:
+            context_vector: The context vector a linear combination of the
+                            high level features computed by the listener.
+
+        """
+        with tf.variable_scope("attention_context"):
+            ### compute the attention context. ###
+            # e_(i,u) = phi(s_i)^T * psi(h_u)
+            phi = self.state_net(pre_context_out)
+            # phi_3d shape: [batch_size, state_size, 1]                  
+            phi_3d = tf.expand_dims(phi, 2)
+            # [batch_size, time, state_size] * [batch_size, state_size, 1]
+            # = [batch_size, time, 1]
+            energy_3d = tf.batch_matmul(self.psi, phi_3d, 
+                                        name='scalar_energy_matmul')
+            scalar_energy = tf.squeeze(energy_3d, squeeze_dims=[2])
+            alpha = tf.nn.softmax(scalar_energy)
+
+            ### find the context vector. ###
+                # c_i = sum(alpha*h_i)
+                #context_vector = 0*context_vector                    
+            # alpha_3d has shape: [batch_size, 1 , time].
+            alpha_3d = tf.expand_dims(alpha, 1)
+            # [batch_size, 1 , time] * [batch_size, time, state_dim]
+            # = [batch_size, 1, state_dim]                
+            context_vector_3d = tf.batch_matmul(alpha_3d, self.high_lvl_features,
+                                                name='context_matmul')
+            context_vector = tf.squeeze(context_vector_3d, squeeze_dims=[1])
+        return context_vector
+
 
     def __call__(self, cell_input, state, scope=None, reuse=False):
         """
         Do the computations for a single unrolling of the attend and
         spell network.
-        During training make sure training_char_input contains
-        valid groundtrouth values.
+        Args:
+            cell_input: During training make sure the cell_input contains
+                        valid groundtrouth values.
+                        During decoding the cell_input may be none.
+            state: The attend and spell cell state, must be a cell state
+                   Touple object contiaining the variables 
+                   pre_context_states, post_context_states, 
+                   one_hot_char, context_vector, in that order.
+            scope: a scope name for the cell.
+            reuse: The reuse flag, set to true to reuse variables previously
+                   defined.
+        Returns:
+            An attend and spell state touple object with updated values.
         """
         as_cell_call_scope = scope or (type(self).__name__+ "_call")
         with tf.variable_scope(as_cell_call_scope, reuse=reuse):
             groundtruth_char = cell_input
+            # StateTouple extends a collection, pylint doesn't get it.
             # pylint: disable = E0633
-            # pylint does not know that StateTouple extends a collection
-            # data type.
             pre_context_states, post_context_states, one_hot_char, \
                 context_vector = state
 
@@ -284,32 +376,11 @@ class AttendAndSpellCell(RNNCell):
             #Pick the last output sometimes.
             if groundtruth_char is not None:
                 #one_hot_char = groundtruth_char
+                one_hot_char = self.select_out_or_target(groundtruth_char,
+                                                         one_hot_char)
 
-                def pick_ground_trouth():
-                    """ Return the true value, from the set annotations."""
-                    return groundtruth_char
-                def pick_last_output():
-                    """ Return the last network output (sometimes wrong),
-                        to expose the network to false predictions. """
-                    return one_hot_char
-                def pred():
-                    """ Return the network output net_out_prob*100 percent
-                        of the time."""
-                    net_out_prob = 0.2
-                    return tf.greater(rand_val, net_out_prob)
-
-                rand_val = tf.random_uniform(shape=(), minval=0.0, maxval=1.0,
-                                             dtype=tf.float32, seed=None,
-                                             name='random_uniform')
-                one_hot_char = tf.cond(pred(),
-                                       pick_ground_trouth,
-                                       pick_last_output,
-                                       name='truth_or_output_sel')
-
+            ### Compute the attend and spell state ###
             #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
-            #Dimensions:   alphabet_size,       32
-            #            + listener_output_dim, 40
-            #                                   72
             rnn_input = tf.concat(1, [one_hot_char, context_vector],
                                   name='pre_context_rnn_input_concat')
             print('pre_context input size:', tf.Tensor.get_shape(rnn_input))
@@ -317,45 +388,10 @@ class AttendAndSpellCell(RNNCell):
             pre_context_out, pre_context_states = \
                     self.pre_context_rnn(rnn_input, pre_context_states)
 
+            ### compute the attention context. ###
+            context_vector = self.attention_context(pre_context_out)
 
-            with tf.variable_scope("attention_context", reuse=reuse):
-                ### compute the attention context. ###
-                # e_(i,u) = phi(s_i)^T * psi(h_u)
-                phi = self.state_net(pre_context_out)
-                    #scalar_energy_lst = []
-                    #for loop running trough the high level features.
-                    #assert len(high level features) == U.
-                #Rewrite the loop above in matrix nontation for extra speed: 
-                #phi_3d shape: [batch_size, state_size, 1]                  
-                phi_3d = tf.expand_dims(phi, 2)
-                #[batch_size, time, state_size] * [batch_size, state_size, 1]
-                # = [batch_size, time, 1]
-                energy_3d = tf.batch_matmul(self.psi, phi_3d, 
-                                            name='scalar_energy_matmul')
-                scalar_energy = tf.squeeze(energy_3d, squeeze_dims=[2])
-                alpha = tf.nn.softmax(scalar_energy)
-
-                #record the scalar_enrgies and alphas for later analysis.
-                # InvalidArgumentError: All inputs to node MergeSummary/
-                # MergeSummary must be from the same frame.
-                #Error!!!
-                #tf.histogram_summary('scalar_energies', scalar_energy_tensor)
-                #tf.histogram_summary('alphas', alpha)
-
-                ### find the context vector. ###
-                    # c_i = sum(alpha*h_i)
-                    #context_vector = 0*context_vector                    
-                # Rewrite for-loop in vector notation for improved speed.
-                # alpha_3d has shape: [batch_size, 1 , time].
-                alpha_3d = tf.expand_dims(alpha, 1)
-                # [batch_size, 1 , time] * [batch_size, time, state_dim]
-                # = [batch_size, 1, state_dim]                
-                context_vector_3d = tf.batch_matmul(alpha_3d, self.high_lvl_features,
-                                                    name='context_matmul')
-                context_vector = tf.squeeze(context_vector_3d, squeeze_dims=[1])
-
-
-
+            #add the post context rnn layer for type two cells.
             if self.type_two is True:
                 post_context_out, post_context_states = \
                 self.post_context_rnn(context_vector, post_context_states)
@@ -369,12 +405,9 @@ class AttendAndSpellCell(RNNCell):
                                            name='char_net_input_concat')
             logits = self.char_net(char_net_input)
 
-            # Run the argmax on the character dimension.
-            # logits has dimensions [batch_size, num_labels]
-            max_pos = tf.argmax(logits, 1, name='choose_max_prob_char')
-            one_hot_char = tf.one_hot(max_pos, self.las_model.target_label_no,
-                                      axis=1)
-
+            ### Decoding ###
+            one_hot_char = self.greedy_decoding(logits)
+            
             # pack everything up in structures which allow the
             # tensorflow unrolling functions to do their data-type checking.
             attend_and_spell_states = StateTouple(
@@ -444,9 +477,8 @@ class RNN(object):
 
 class FFNetDimension(object):
     """ Class containing the information to create Feedforward nets. """
-    def __init__(self, input_dim, output_dim, num_hidden_units,
+    def __init__(self, output_dim, num_hidden_units,
                  num_hidden_layers):
-        self.input_dim = input_dim
         self.output_dim = output_dim
         self.num_hidden_units = num_hidden_units
         self.num_hidden_layers = num_hidden_layers
@@ -467,8 +499,9 @@ class FeedForwardNetwork(object):
         #input layer and hidden layers
         for k in range(0, len(self.layers)-1):
             self.layers[k] = FFLayer(dimension.num_hidden_units, activation)
-        #output layer
-        self.layers[-1] = FFLayer(dimension.output_dim, activation)
+        #linar output layer, no activation required.
+        identity_activation = IdentityWrapper()
+        self.layers[-1] = FFLayer(dimension.output_dim, identity_activation)
 
     def __call__(self, states_or_features):
         hidden = states_or_features

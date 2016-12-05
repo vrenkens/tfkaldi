@@ -166,6 +166,8 @@ class LasPhonemeEncoder(TargetCoder):
         """
         Create an alphabet of folded phonemes, according to
         "Speaker-Independent Phone Recognition Using Hidden Markov Models."
+        It is very important to have the eos tokan at poistion one, because the las
+        code assumes it is there!
         """
 
         alphabet = ['<sos>', '<eos>', 'sil', 'aa', 'ae', 'ah', 'aw', 'ay', 'b', 'ch', 'd', 'dh',

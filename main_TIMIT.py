@@ -34,7 +34,8 @@ config_path = 'config/config_TIMIT_las.cfg'
 config.read(config_path)
 current_dir = os.getcwd()
 
-#compute the features of the training set for DNN training if they are different then the GMM features.
+#compute the features of the training set for DNN training
+#if they are different then the GMM features.
 if TRAINFEATURES:
     feat_cfg = dict(config.items('dnn-features'))
 
@@ -47,7 +48,8 @@ if TRAINFEATURES:
     print('------- computing cmvn stats ----------')
     prepare_data.compute_cmvn(config.get('directories', 'train_features') + '/' + feat_cfg['name'])
 
-#compute the features of the training set for DNN testing if they are different then the GMM features.
+# compute the features of the training set for DNN testing if
+# they are different then the GMM features.
 if TESTFEATURES:
     feat_cfg = dict(config.items('dnn-features'))
 
@@ -75,14 +77,12 @@ coder = target_coder.LasPhonemeEncoder(target_normalizers.timit_phone_norm_las)
 nnet = Nnet(config, input_dim, coder.num_labels)
 
 if TRAIN:
-
     #only shuffle if we start with initialisation
     if config.get('nnet', 'starting_step') == '0':
         #shuffle the examples on disk
         print('------- shuffling examples ----------')
         prepare_data.shuffle_examples(
             config.get('directories', 'train_features') + '/' + config.get('dnn-features', 'name'))
-
 
     #create a feature reader
     featdir = config.get('directories', 'train_features') + '/' + \
@@ -92,21 +92,17 @@ if TRAIN:
     featreader = feature_reader.FeatureReader(
         featdir +'/feats_shuffled.scp', featdir + '/cmvn.scp',
         featdir + '/utt2spk', 0, max_input_length)
-
     #the path to the text file
     textfile = config.get('directories', 'train_data') + '/train39.text'
-
     #create a batch dispenser
     dispenser = batchdispenser.TextBatchDispenser(
         featreader, coder, int(config.get('nnet', 'batch_size')), textfile)
-
     #train the neural net
     print('------- training neural net ----------')
     nnet.train(dispenser)
 
 
 if TEST:
-
     #use the neural net to calculate posteriors for the testing set.
     print('------- decoding test set ----------')
     savedir = config.get('directories', 'expdir') + '/' + config.get('nnet', 'name')

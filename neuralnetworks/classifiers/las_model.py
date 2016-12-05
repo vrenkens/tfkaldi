@@ -72,41 +72,62 @@ class LasModel(Classifier):
             self.as_set.feedforward_hidden_layers)
 
 
+    def encode_targets_one_hot(self, targets):
+        """
+        Transforn the targets into one hot encoded targets.
+        Args:
+            targets: Tensor of shape [batch_size, max_target_time, 1]
+        Returns:
+            one_hot_targets: [batch_size, max_target_time, label_no]
+        """
+        with tf.variable_scope("one_hot_encoding"):
+            target_one_hot = tf.one_hot(targets,
+                                        self.target_label_no,
+                                        axis=2)
+            #one hot encoding adds an extra dimension we don't want.
+            #squeeze it out.
+            target_one_hot = tf.squeeze(target_one_hot, squeeze_dims=[3])
+            print("train targets shape: ", tf.Tensor.get_shape(target_one_hot))
+            return target_one_hot
+
+    @staticmethod
+    def add_input_noise(inputs, stddev=0.65):
+        """
+        Add noise with a given standart deviation to the inputs
+        Args:
+            inputs: the noise free input-features.
+            stddev: The standart deviation of the noise.
+        returns:
+            Input features plus noise.
+        """
+        with tf.variable_scope("input_noise"):
+            #add input noise with a standart deviation of stddev.
+            inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs 
+        return inputs
+
     def __call__(self, inputs, seq_length, is_training=False, reuse=True,
                  scope=None, targets=None, target_seq_length=None):
-
-
         print('\x1b[01;32m' + "Adding LAS conputations:")
         print("    training_graph:", is_training)
         print("    decoding_graph:", self.decoding)
         print('\x1b[0m')
 
         if is_training is True:
-            with tf.variable_scope("input_noise"):
-                #add input noise with a standart deviation of stddev.
-                stddev = 0.65
-                inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs 
-
+            inputs = self.add_input_noise(inputs)
+            #check if the targets are available for training.
+            assert targets is not None
 
         #inputs = tf.cast(inputs, self.dtype)
         if targets is not None:
             #one hot encode the targets
-            with tf.variable_scope("one_hot_encoding"):
-                target_one_hot = tf.one_hot(targets,
-                                            self.target_label_no,
-                                            axis=2)
-                #one hot encoding adds an extra dimension we don't want.
-                #squeeze it out.
-                target_one_hot = tf.squeeze(target_one_hot, squeeze_dims=[3])
-                print("train targets shape: ", tf.Tensor.get_shape(target_one_hot))
+            target_one_hot = self.encode_targets_one_hot(targets)
         else:
             assert self.decoding is True, "Las Training uses the targets."
 
         input_shape = tf.Tensor.get_shape(inputs)
         print("las input shape:", input_shape)
 
-        if is_training is True:
-            assert targets is not None
+           
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
@@ -137,17 +158,11 @@ class LasModel(Classifier):
                     _, _, one_hot_char, _ = cell_state
                     logits = tf.expand_dims(one_hot_char, 1)
 
-                    #zero_init = tf.constant_initializer(0)
-                    #time = tf.get_variable('time',
-                    #                       shape=[],
-                    #                       dtype=self.dtype,
-                    #                      trainable=False,
-                    #                      initializer=zero_init)
-                    time = tf.constant(0, self.dtype, shape=[])
-
-                    #turn time from a variable into a tensor.
-                    time = tf.identity(time)
-                    loop_vars = DecodingTouple(logits, cell_state, time)
+                    time = tf.constant(0, tf.int32, shape=[])
+                    done_mask = tf.cast(tf.zeros(self.batch_size), tf.bool)
+                    sequence_length = tf.zeros(self.batch_size, tf.int32)
+                    loop_vars = DecodingTouple(logits, cell_state, time,
+                                               done_mask, sequence_length)
 
                     #set up the shape invariants for the while loop.
                     shape_invariants = loop_vars.get_shape()
@@ -160,7 +175,7 @@ class LasModel(Classifier):
                     result = tf.while_loop(
                         self.cond, self.body, loop_vars=[loop_vars],
                         shape_invariants=[shape_invariants])
-                    logits, cell_state, time = result[0]
+                    logits, cell_state, time, _, logits_sequence_length = result[0]
 
             # The saver can be used to restore the variables in the graph
             # from file later.
@@ -175,10 +190,10 @@ class LasModel(Classifier):
         return logits, logits_sequence_length, saver, None
 
     def cond(self, loop_vars):
-        ''' Condition in charge of the attend and spell decoding
+        """ Condition in charge of the attend and spell decoding
             while loop. It checks if all the spellers in the current batch
             are confident of having found an eos token or if a maximum time
-            has been exeeded.'''
+            has been exeeded."""
 
         _, cell_state, time, _, _ = loop_vars
         _, _, one_hot_char, _ = cell_state
@@ -196,6 +211,35 @@ class LasModel(Classifier):
         keep_working = tf.not_equal(loop_continue_counter, 0)
         return keep_working
 
+
+    def get_sequence_lengths(self, time, logits, done_mask, logits_sequence_length):
+        """
+        Determine the sequence length of the decoded logits based on the 
+        greedy decoded end of sentence token probability, the current time and 
+        a done mask, which keeps track of the first appreanche of an end of sentence
+        token.
+
+        Args:
+            time: The current time step [].
+            logits: The logits produced by the las cell in a matrix [batch_size, label_no].
+            done_mask: A boolen mask vector of size [batch_size]
+            logits_sequence_length: An integer vector with [batch_size] entries.
+        Return:
+            Updated versions of the logits_sequence_length and mask vectors with unchanged
+            sizes.
+
+        """
+        with tf.variable_scope("get_sequence_lengths"):
+            max_vals = tf.argmax(logits, 1)
+            mask = tf.equal(max_vals, tf.constant(1, tf.int64))
+            current_mask = tf.logical_and(mask, tf.logical_not(done_mask))
+            done_mask = tf.logical_or(mask, done_mask)
+            time_vec = tf.ones(self.batch_size, tf.int32) * time
+            logits_sequence_length = tf.select(current_mask,
+                                               time_vec,
+                                               logits_sequence_length)
+        return done_mask, logits_sequence_length
+
     def body(self, loop_vars):
         ''' The body of the decoding while loop. Contains a manual enrolling
             of the attend and spell computations.  '''
@@ -207,19 +251,15 @@ class LasModel(Classifier):
             self.attend_and_spell_cell(None, cell_state)
 
         #update the sequence lengths.
-        time_vals = tf.ones([tf.Tensor.get_shape(done_mask)[0]], tf.float32)
-        seq_length_update_vals = time_vals*time
-        current_eos_prob_vec = logits[:, 1]
-
-        new_done_mask = tf.less_equal(current_eos_prob_vec, self.eos_treshold)
-        done_mask = tf.logical_or(new_done_mask, tf.logical_not(done_mask))
-        logits_sequence_length = tf.select(done_mask,
-                                           logits_sequence_length,
-                                           seq_length_update_vals)
+        done_mask, logits_sequence_length = self.get_sequence_lengths(time,
+                                                                      logits,
+                                                                      done_mask,
+                                                                      logits_sequence_length)
 
         #store the logits.
         logits = tf.expand_dims(logits, 1)
         logits = tf.concat(1, [prev_logits, logits])
+        #pylint: disable=E1101
         logits.set_shape([self.batch_size, None, self.target_label_no])
 
         out_vars = DecodingTouple(logits, cell_state, time, done_mask, logits_sequence_length)

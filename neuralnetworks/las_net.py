@@ -54,8 +54,7 @@ class Nnet(object):
         #lstm_dim, plstm_layer_no, output_dim, out_weights_std
         self.lset = ListenerSettings(int(self.net_conf['num_units']),
                                      int(self.net_conf['num_layers']),
-                                     int(self.net_conf['output_dim']),
-                                     0.1)
+                                     None, None)
         #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
         self.asset = AttendAndSpellSettings(self.net_conf['state_size'],
                                             self.net_conf['net_size'],
