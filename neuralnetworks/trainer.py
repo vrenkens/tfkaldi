@@ -74,7 +74,7 @@ class Trainer(object):
                     reuse=None, scope='Classifier')
   
             #compute the validation output of the classifier
-            logits, _, _, _ = classifier(
+            logits, val_logit_seq_length, _, _ = classifier(
                 self.inputs, self.input_seq_length, targets=self.targets,
                 target_seq_length=self.target_seq_length, is_training=False,
                 reuse=True, scope='Classifier')
@@ -190,7 +190,9 @@ class Trainer(object):
 
             with tf.name_scope('valid'):
                 #compute the outputs that will be used for validation
-                self.outputs = self.validation(logits, logit_seq_length)
+                #TODO: push bugfix
+                self.outputs, self.outputs_seq_length = \
+                    self.validation(logits, val_logit_seq_length) 
 
             # add an operation to initialise all the variables in the graph
             self.init_op = tf.initialize_all_variables()
@@ -242,22 +244,22 @@ class Trainer(object):
             logit_seq_length: the sequence lengths of the logits
 
         Returns:
-            The validation outputs
+            The validation outputs, and output sequence lengths.
         '''
 
         raise NotImplementedError('Abstract method')
 
     @abstractmethod
-    def validation_metric(self, outputs, targets):
+    def validation_metric(self, outputs, output_seq_length, targets):
         '''
         compute the metric that will be used for validation
 
         The metric can be e.g. an error rate or a loss
 
         Args:
-            outputs: the validation outputs
-            targets: the ground truth labels
-
+                      outputs: the validation outputs
+                      targets: the ground truth labels
+            output_seq_length: the output seq_lengths
         Returns:
             The validation outputs
         '''
@@ -268,6 +270,7 @@ class Trainer(object):
         '''Initialize all the variables in the graph'''
 
         self.init_op.run() #pylint: disable=E1101
+        print("trainer initialized...")
 
     def start_visualization(self, logdir):
         '''
@@ -379,15 +382,17 @@ class Trainer(object):
 
         #feed in the minibatches one by one and get the validation outputs
         outputs = []
+        seq_lengths = []
         for minibatch in minibatches:
 
-            #pylint: disable=E1101
-            outputs += list(self.outputs.eval(
-                feed_dict={self.inputs:minibatch[0],
-                           self.input_seq_length:minibatch[2]}))
+            feed_dict = {self.inputs:minibatch[0], 
+                         self.input_seq_length:minibatch[2]}
+            output, seq_length = tf.get_default_session().run(
+                [self.outputs, self.outputs_seq_length], feed_dict=feed_dict)
+            outputs.append(output)
+            seq_lengths.append(seq_length)
 
-        #compute the validation error
-        error = self.validation_metric(outputs[:len(targets)], targets)
+        error = self.validation_metric(outputs[:len(targets)], seq_lengths, targets)
 
         return error
 
@@ -483,7 +488,7 @@ class CrossEnthropyTrainer(Trainer):
 
     def validation(self, logits, logit_seq_length):
         '''
-        apply a softmax to the logits so the cross-enthropy can be computed
+        Do nothing.
 
         Args:
             logits: a [batch_size, max_input_length, dim] tensor containing the
@@ -493,18 +498,22 @@ class CrossEnthropyTrainer(Trainer):
         Returns:
             a tensor with the same shape as logits with the label probabilities
         '''
+        #remove outputs after eos token using the seq_lengths.
 
-        return tf.nn.softmax(logits)
-
+        return logits, logit_seq_length
 
     @staticmethod
-    def greedy_search(network_output):
-        """ Extract the targets char probability"""
+    def greedy_search(clean_output):
+        """ Extract the targets char probability
+        Args:
+            clean_output: A list of shape [batch_size][max_time, no_labels]
+        Returns:
+            utterance_char_batches: A list of shape [batch_size][max_time]"""
         utterance_char_batches = []
-        for batch in range(0, network_output.shape[0]):
+        for batch in range(0, len(clean_output)):
             utterance_chars_nos = []
-            for time in range(0, network_output.shape[1]):
-                utterance_chars_nos.append(np.argmax(network_output[batch, time, :]))
+            for time in range(0, clean_output[batch].shape[0]):
+                utterance_chars_nos.append(np.argmax(clean_output[batch][time, :]))
             utterance_char_batches.append(np.array(utterance_chars_nos))
         return utterance_char_batches
 
@@ -524,7 +533,7 @@ class CrossEnthropyTrainer(Trainer):
                 dmat[i, j] = min(dmat[i-1, j-1]+delt, dmat[i-1, j]+1, dmat[i, j-1]+1)
         return dmat[len(seq1), len(seq2)]
 
-    def validation_metric(self, outputs, targets):
+    def validation_metric(self, outputs, out_seq_length, targets):
         '''the cross-enthropy
 
         Args:
@@ -532,22 +541,30 @@ class CrossEnthropyTrainer(Trainer):
                 label probabilities of size [batch_size][max_input_length, dim].
             targets: a list containing the ground truth target labels
         '''
-        #TODO: use seq_length!!!
-        outputs = np.array(outputs)
-        decoded_outputs = self.greedy_search(outputs)
-        
-        num_frames = 0
-        tot_lev = 0
+        np_outputs = np.array(outputs)
+        #concatenate the minibatches.
+        batch_size = len(targets)
+        mini_batch_shape = outputs[0].shape
+        np_outputs = np.reshape(outputs, [batch_size, mini_batch_shape[1], mini_batch_shape[2]])
+        np_seq_length = np.reshape(np.array(out_seq_length), batch_size)
+        #remove outputs after the seq_length
+        clean_outputs = []
+        for batch_count in range(batch_size):
+            clean_outputs.append(np_outputs[batch_count, 0:(np_seq_length[batch_count]), :])            
+        decoded_outputs = self.greedy_search(clean_outputs)
+        num_frames = 0.0
+        tot_lev = 0.0
         for utt_no in range(0, len(decoded_outputs)):
             num_frames += targets[utt_no].size
             tot_lev = tot_lev + self.edit_distance(decoded_outputs[utt_no], 
                                                    targets[utt_no])
         norm_lev = tot_lev/num_frames
+
+        print('Example targets:     ', targets[0])
+        print('Greedy  targets:    ', decoded_outputs[0])
+        print('Decoded  length:', out_seq_length[0][0])
+        
         return norm_lev
-
-
-
-
 
 class CTCTrainer(Trainer):
     '''A trainer that minimises the CTC loss, the output sequences'''
@@ -649,10 +666,10 @@ class CTCTrainer(Trainer):
         dense_output = tf.sparse_tensor_to_dense(sparse_output[0],
                                                  default_value=-1)
 
-        return dense_output
+        return dense_output, logit_seq_length
 
 
-    def validation_metric(self, outputs, targets):
+    def validation_metric(self, outputs, output_seq_length, targets):
         '''the Label Error Rate for the decoded labels
 
         Args:

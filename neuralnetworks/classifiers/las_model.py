@@ -107,7 +107,7 @@ class LasModel(Classifier):
 
     def __call__(self, inputs, seq_length, is_training=False, reuse=True,
                  scope=None, targets=None, target_seq_length=None):
-        print('\x1b[01;32m' + "Adding LAS conputations:")
+        print('\x1b[01;32m' + "Adding LAS computations:")
         print("    training_graph:", is_training)
         print("    decoding_graph:", self.decoding)
         print('\x1b[0m')
@@ -160,7 +160,7 @@ class LasModel(Classifier):
 
                     time = tf.constant(0, tf.int32, shape=[])
                     done_mask = tf.cast(tf.zeros(self.batch_size), tf.bool)
-                    sequence_length = tf.zeros(self.batch_size, tf.int32)
+                    sequence_length = tf.ones(self.batch_size, tf.int32)
                     loop_vars = DecodingTouple(logits, cell_state, time,
                                                done_mask, sequence_length)
 
@@ -234,7 +234,7 @@ class LasModel(Classifier):
             mask = tf.equal(max_vals, tf.constant(1, tf.int64))
             current_mask = tf.logical_and(mask, tf.logical_not(done_mask))
             done_mask = tf.logical_or(mask, done_mask)
-            time_vec = tf.ones(self.batch_size, tf.int32) * time
+            time_vec = tf.ones(self.batch_size, tf.int32) * time + 1
             logits_sequence_length = tf.select(current_mask,
                                                time_vec,
                                                logits_sequence_length)

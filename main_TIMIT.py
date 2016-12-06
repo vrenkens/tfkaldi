@@ -21,7 +21,8 @@ from IPython.core.debugger import Tracer; debug_here = Tracer();
 TRAINFEATURES = False
 TESTFEATURES = False
 TRAIN = True
-TEST = False
+TEST_CTC = False
+TEST_LAS = True
 
 #read config file
 config = configparser.ConfigParser()
@@ -102,7 +103,7 @@ if TRAIN:
     nnet.train(dispenser)
 
 
-if TEST:
+if TEST_CTC:
     #use the neural net to calculate posteriors for the testing set.
     print('------- decoding test set ----------')
     savedir = config.get('directories', 'expdir') + '/' + config.get('nnet', 'name')
@@ -119,7 +120,7 @@ if TEST:
         featdir + '/feats.scp', featdir + '/cmvn.scp',
         featdir + '/utt2spk', 0, max_input_length)
 
-    #decode with te neural net
+    #decode with the neural net
     resultsfolder = savedir + '/decode'
     nbests = nnet.decode(featreader, coder)
 
@@ -146,3 +147,56 @@ if TEST:
              config.get('directories', 'expdir') + "/" \
              + config.get('nnet', 'name') + '/used_config.cfg')
 
+if TEST_LAS:
+    #use the neural net to calculate posteriors for the testing set.
+    print('------- decoding test set ----------')
+    savedir = config.get('directories', 'expdir') + '/' + config.get('nnet', 'name')
+    decodedir = savedir + '/decode'
+    if not os.path.isdir(decodedir):
+        os.mkdir(decodedir)
+
+    featdir = config.get('directories', 'test_features') + '/' +  config.get('dnn-features', 'name')
+
+    #create a feature reader
+    with open(featdir + '/maxlength', 'r') as fid:
+        max_input_length = int(fid.read())
+    featreader = feature_reader.FeatureReader(
+        featdir + '/feats.scp', featdir + '/cmvn.scp',
+        featdir + '/utt2spk', 0, max_input_length)
+
+
+    #the path to the text file
+    textfile = config.get('directories', 'test_data') + '/test39.text'
+
+    #read all the reference transcriptions
+    with open(textfile) as fid:
+        lines = fid.readlines()
+
+    references = dict()
+    for line in lines:
+        splitline = line.strip().split(' ')
+        references[splitline[0]] = target_normalizers.timit_phone_norm(
+            ' '.join(splitline[1:]), None)
+
+    #decode with the neural net
+    resultsfolder = savedir + '/decode'
+    
+    nbests = nnet.decode(featreader, coder)
+    lev_dist = 0.0
+    utts = 0.0
+    for utt_id, decoded in nbests.iteritems():
+        target = coder.encode(references[utt_id])
+        utts += target.size
+        lev_dist += score.edit_distance(target, decoded[0][0])
+
+    lev_dist = lev_dist/utts 
+
+    print('lev_dist: %f' % lev_dist)
+    utt_id = references.keys()[0]
+    print(references[utt_id])
+    print(coder.decode(nbests[utt_id][0][0]))
+
+print('Backing up cfg for future reference')
+copyfile(config_path,
+         config.get('directories', 'expdir') + "/" \
+         + config.get('nnet', 'name') + '/used_config.cfg')

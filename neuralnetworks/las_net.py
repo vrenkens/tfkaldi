@@ -106,7 +106,7 @@ class Nnet(object):
             numutterances_per_minibatch = int(
                 self.net_conf['numutterances_per_minibatch'])
 
-        #put the DBLSTM in a CTC training environment
+        #put the las in a cross entropy training environment
         print('building the training graph')
         trainer = CrossEnthropyTrainer(
             self.classifier, self.input_dim, dispenser.max_input_length,
@@ -128,7 +128,7 @@ class Nnet(object):
         with tf.Session(graph=trainer.graph, config=config):
             #initialise the trainer
             trainer.initialize()
-
+            
             #load the neural net if the starting step is not 0
             if step > 0:
                 trainer.restore_trainer(self.net_conf['savedir']
@@ -261,13 +261,7 @@ class Nnet(object):
                     break
 
                 #compute predictions
-                encoded_hypotheses, logprobs = decoder(utt_mat)
-
-                #decode the hypotheses
-                hypotheses = [target_coder.decode(h)
-                              for h in encoded_hypotheses]
-
-                nbests[utt_id] = (hypotheses, logprobs)
-
+                encoded_hypotheses = decoder(utt_mat)
+                nbests[utt_id] = encoded_hypotheses
 
         return nbests

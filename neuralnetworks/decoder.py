@@ -5,6 +5,7 @@ from abc import ABCMeta, abstractmethod
 import tensorflow as tf
 import numpy as np
 from classifiers import seq_convertors
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 class Decoder(object):
     '''the abstract class for a decoder'''
@@ -102,7 +103,6 @@ class Decoder(object):
                        self.input_seq_length:input_seq_length})
 
         decoded = self.process_decoded(decoded)
-
         return decoded
 
     def restore(self, filename):
@@ -233,12 +233,16 @@ class SimpleSeqDecoder(Decoder):
         Returns:
             An NxO tensor containing posterior distributions
         '''
-
-        return tf.nn.softmax(logits)
+        sequences = tf.unpack(logits)
+        sequences = [tf.gather(sequences[s], tf.range(logits_seq_length[s]))
+                     for s in range(len(sequences))]
+        clean_logits = tf.pack(sequences)
+        #clean_logits = logits
+        return tf.nn.softmax(clean_logits), logits_seq_length
 
     def process_decoded(self, decoded):
         '''
-        do nothing
+        Apply greedy search.
 
         Args:
             decoded: the outputs of the decoding graph
@@ -246,18 +250,20 @@ class SimpleSeqDecoder(Decoder):
         Returns:
             the outputs of the decoding graph
         '''
+        soflogits, seq_length = decoded
+        return self.greedy_search(soflogits), seq_length
 
-        return decoded
-
-    def greedy_search(self, network_output):
-        """ Extract the targets char probability."""
+    @staticmethod
+    def greedy_search(network_output):
+        """ Extract the targets char probability"""
         utterance_char_batches = []
         for batch in range(0, network_output.shape[0]):
             utterance_chars_nos = []
             for time in range(0, network_output.shape[1]):
                 utterance_chars_nos.append(np.argmax(network_output[batch, time, :]))
-            utterance_chars = test_dispenser.target_coder.decode(
-                utterance_chars_nos)
-            utterance_char_batches.append(utterance_chars)
-        return np.array(utterance_char_batches)
+            utterance_char_batches.append(np.array(utterance_chars_nos))
+        return utterance_char_batches
+
+
+
             

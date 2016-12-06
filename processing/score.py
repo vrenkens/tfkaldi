@@ -44,3 +44,18 @@ def CER(nbests, references):
         num_labels += len(reference)
 
     return errors/num_labels
+
+def edit_distance(seq1, seq2):
+    """ Calculate edit distance between sequences x and y using
+        matrix dynamic programming.  Return distance.
+        source, Ben Langmead:
+        http://www.cs.jhu.edu/~langmea/resources/lecture_notes/dp_and_edit_dist.pdf
+    """
+    dmat = np.zeros((len(seq1)+1, len(seq2)+1), dtype=int)
+    dmat[0, 1:] = range(1, len(seq2)+1)
+    dmat[1:, 0] = range(1, len(seq1)+1)
+    for i in range(1, len(seq1)+1):
+        for j in range(1, len(seq2)+1):
+            delt = 1 if seq1[i-1] != seq2[j-1] else 0
+            dmat[i, j] = min(dmat[i-1, j-1]+delt, dmat[i-1, j]+1, dmat[i, j-1]+1)
+    return dmat[len(seq1), len(seq2)]
