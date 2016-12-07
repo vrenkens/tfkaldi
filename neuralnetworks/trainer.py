@@ -66,9 +66,6 @@ class Trainer(object):
                 tf.int32, shape=[numutterances_per_minibatch],
                 name='output_seq_length')
 
-            #las train targets
-            
-
             #compute the training outputs of the classifier
             trainlogits, logit_seq_length, self.modelsaver, self.control_ops =\
                 classifier(
@@ -471,12 +468,12 @@ class LasCrossEnthropyTrainer(Trainer):
         with tf.name_scope('cross_enthropy_loss'):
 
             #training starts at t=1.
-            #targets_t_one = targets[:, 1:, :]
-            #target_seq_length_t_one = target_seq_length - 1
+            targets_t_one = targets[:, 1:, :]
+            target_seq_length_t_one = target_seq_length - 1
 
             #convert to non sequential data
-            nonseq_targets = seq_convertors.seq2nonseq(targets,
-                                                       target_seq_length)
+            nonseq_targets = seq_convertors.seq2nonseq(targets_t_one,
+                                                       target_seq_length_t_one)
             nonseq_logits = seq_convertors.seq2nonseq(logits, logit_seq_length)
 
             #make a vector out of the targets

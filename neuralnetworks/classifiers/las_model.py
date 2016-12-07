@@ -117,8 +117,11 @@ class LasModel(Classifier):
 
         #inputs = tf.cast(inputs, self.dtype)
         if targets is not None:
+            #remove the <sos> token, because training starts at t=1.
+            targets_from_t_one = targets[:, 1:, :]
+            target_seq_length = target_seq_length-1
             #one hot encode the targets
-            target_one_hot = self.encode_targets_one_hot(targets)
+            target_one_hot = self.encode_targets_one_hot(targets_from_t_one)
         else:
             assert self.decoding is True, "Las Training uses the targets."
 
