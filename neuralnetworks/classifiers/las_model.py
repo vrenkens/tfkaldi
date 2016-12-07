@@ -58,8 +58,8 @@ class LasModel(Classifier):
         self.decoding = decoding
 
         #decoding constants
-        #self.max_decoding_steps = 100
-        self.max_decoding_steps = 44
+        self.max_decoding_steps = 100
+        #self.max_decoding_steps = 44
 
         #store the two model parts.
         self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no, 
@@ -124,8 +124,6 @@ class LasModel(Classifier):
 
         input_shape = tf.Tensor.get_shape(inputs)
         print("las input shape:", input_shape)
-
-           
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
@@ -198,7 +196,7 @@ class LasModel(Classifier):
             keep_working, true if the loop should continue.
         """
 
-        _, _, time, done_mask, _ = loop_vars
+        _, _, time, done_mask, sequence_length = loop_vars
 
         #the encoding table has the eos token ">" placed at position 0.
         #i.e. ">", "<", ...
@@ -206,6 +204,7 @@ class LasModel(Classifier):
         all_eos = tf.equal(not_done_no, tf.constant(0))
         stop_loop = tf.logical_or(all_eos, tf.greater(time, self.max_decoding_steps))
         keep_working = tf.logical_not(stop_loop)
+        #keep_working = tf.Print(keep_working, [keep_working, sequence_length])
         return keep_working
 
 
@@ -227,14 +226,16 @@ class LasModel(Classifier):
 
         """
         with tf.variable_scope("get_sequence_lengths"):
+            
             max_vals = tf.argmax(logits, 1)
             mask = tf.equal(max_vals, tf.constant(0, tf.int64))
-            current_mask = tf.logical_and(mask, tf.logical_not(done_mask))
+            #current_mask = tf.logical_and(mask, tf.logical_not(done_mask))
+            
+            time_vec = tf.ones(self.batch_size, tf.int32)*(time+1)
+            logits_sequence_length = tf.select(done_mask,
+                                               logits_sequence_length,
+                                               time_vec)
             done_mask = tf.logical_or(mask, done_mask)
-            time_vec = tf.ones(self.batch_size, tf.int32) * time + 1
-            logits_sequence_length = tf.select(current_mask,
-                                               time_vec,
-                                               logits_sequence_length)
         return done_mask, logits_sequence_length
 
     def body(self, loop_vars):

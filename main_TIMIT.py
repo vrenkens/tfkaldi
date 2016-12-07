@@ -20,9 +20,9 @@ from IPython.core.debugger import Tracer; debug_here = Tracer();
 #(if nothing has changed)
 TRAINFEATURES = False
 TESTFEATURES = False
-TRAIN = False
+TRAIN = True
 TEST_CTC = False
-TEST_LAS = True
+TEST_LAS = False
 
 #read config file
 config = configparser.ConfigParser()
@@ -141,7 +141,6 @@ if TEST_CTC:
     CER = score.CER(nbests, references)
 
     print('phoneme error rate: %f' % CER)
-
     print('Backing up cfg for future reference')
     copyfile(config_path,
              config.get('directories', 'expdir') + "/" \
@@ -156,6 +155,10 @@ if TEST_LAS:
         os.mkdir(decodedir)
 
     featdir = config.get('directories', 'test_features') + '/' +  config.get('dnn-features', 'name')
+    textfile = config.get('directories', 'test_data') + '/test39.text'
+    
+    #featdir = config.get('directories', 'train_features') + '/' +  config.get('dnn-features', 'name')
+    #textfile = config.get('directories', 'train_data') + '/train39.text'
 
     #create a feature reader
     with open(featdir + '/maxlength', 'r') as fid:
@@ -163,10 +166,6 @@ if TEST_LAS:
     featreader = feature_reader.FeatureReader(
         featdir + '/feats.scp', featdir + '/cmvn.scp',
         featdir + '/utt2spk', 0, max_input_length)
-
-
-    #the path to the text file
-    textfile = config.get('directories', 'test_data') + '/test39.text'
 
     #read all the reference transcriptions
     with open(textfile) as fid:

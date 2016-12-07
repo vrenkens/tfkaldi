@@ -15,8 +15,6 @@ eos_prob = tf.get_variable('test', shape=[5, 1], dtype=tf.float32,
 #loop_continue_conditions = tf.logical_and(tf.less(eos_prob, eos_treshold),
 #                                          tf.less(i, max_target_length))
 
-
-
 sequence_length_init = [100, 50, 10, 20, 40]
 seq_init = tf.constant_initializer(sequence_length_init)
 sequence_length = tf.get_variable('test2', dtype=tf.int32,

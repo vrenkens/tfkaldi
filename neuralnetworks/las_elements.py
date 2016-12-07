@@ -247,7 +247,7 @@ class AttendAndSpellCell(RNNCell):
 
             # The character distribution must initially be the sos token.
             # assuming encoding done as specified in the batch dispenser.
-            # 0: '<', 1: '>', 2:' ', ...
+            # 0: '>', 1: '<', 2:' ', ...
             # initialize to start of sentence token '<' as one hot encoding:
             # 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
             sos_np = np.ones(batch_size, dtype=np.int32)

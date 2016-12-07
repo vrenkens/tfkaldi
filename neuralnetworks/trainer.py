@@ -66,6 +66,9 @@ class Trainer(object):
                 tf.int32, shape=[numutterances_per_minibatch],
                 name='output_seq_length')
 
+            #las train targets
+            
+
             #compute the training outputs of the classifier
             trainlogits, logit_seq_length, self.modelsaver, self.control_ops =\
                 classifier(
@@ -439,7 +442,7 @@ class Trainer(object):
         self.modelsaver.restore(tf.get_default_session(), filename)
         self.saver.restore(tf.get_default_session(), filename + '_trainvars')
 
-class CrossEnthropyTrainer(Trainer):
+class LasCrossEnthropyTrainer(Trainer):
     '''A trainer that minimises the cross-enthropy loss, the output sequences
     must be of the same length as the input sequences'''
 
@@ -466,6 +469,10 @@ class CrossEnthropyTrainer(Trainer):
         '''
 
         with tf.name_scope('cross_enthropy_loss'):
+
+            #training starts at t=1.
+            #targets_t_one = targets[:, 1:, :]
+            #target_seq_length_t_one = target_seq_length - 1
 
             #convert to non sequential data
             nonseq_targets = seq_convertors.seq2nonseq(targets,

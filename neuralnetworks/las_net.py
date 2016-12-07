@@ -12,7 +12,7 @@ from neuralnetworks.classifiers.las_model import LasModel
 from neuralnetworks.classifiers.las_model import GeneralSettings
 from neuralnetworks.classifiers.las_model import ListenerSettings
 from neuralnetworks.classifiers.las_model import AttendAndSpellSettings
-from neuralnetworks.trainer import CrossEnthropyTrainer
+from neuralnetworks.trainer import LasCrossEnthropyTrainer
 from neuralnetworks.decoder import SimpleSeqDecoder
 
 from IPython.core.debugger import Tracer; debug_here = Tracer();
@@ -108,7 +108,7 @@ class Nnet(object):
 
         #put the las in a cross entropy training environment
         print('building the training graph')
-        trainer = CrossEnthropyTrainer(
+        trainer = LasCrossEnthropyTrainer(
             self.classifier, self.input_dim, dispenser.max_input_length,
             dispenser.max_target_length,
             float(self.net_conf['initial_learning_rate']),
@@ -255,6 +255,8 @@ class Nnet(object):
 
             #feed the utterances one by one to the neural net
             while True:
+            #if 1:
+                #for _ in range(10):
                 utt_id, utt_mat, looped = reader.get_utt()
 
                 if looped:
