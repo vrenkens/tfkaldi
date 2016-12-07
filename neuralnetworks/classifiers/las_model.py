@@ -58,8 +58,6 @@ class LasModel(Classifier):
         self.decoding = decoding
 
         #decoding constants
-        self.eos_treshold = 1.8
-        #self.eos_treshold = 0.8
         #self.max_decoding_steps = 100
         self.max_decoding_steps = 44
 
@@ -193,22 +191,21 @@ class LasModel(Classifier):
         """ Condition in charge of the attend and spell decoding
             while loop. It checks if all the spellers in the current batch
             are confident of having found an eos token or if a maximum time
-            has been exeeded."""
+            has been exeeded.
+        Args:
+            loop_vars: The loop variables.
+        Returns:
+            keep_working, true if the loop should continue.
+        """
 
-        _, cell_state, time, _, _ = loop_vars
-        _, _, one_hot_char, _ = cell_state
+        _, _, time, done_mask, _ = loop_vars
 
         #the encoding table has the eos token ">" placed at position 0.
-        #i.e. " ", "<", ">", ...
-        eos_prob = one_hot_char[:, 0]
-        loop_continue_conditions = tf.logical_and(
-            tf.less(eos_prob, self.eos_treshold), #TODO: change to not equal.
-            tf.less(time, self.max_decoding_steps))
-
-
-        loop_continue_counter = tf.reduce_sum(tf.to_int32(
-            loop_continue_conditions))
-        keep_working = tf.not_equal(loop_continue_counter, 0)
+        #i.e. ">", "<", ...
+        not_done_no = tf.reduce_sum(tf.cast(tf.logical_not(done_mask), tf.int32))
+        all_eos = tf.equal(not_done_no, tf.constant(0))
+        stop_loop = tf.logical_or(all_eos, tf.greater(time, self.max_decoding_steps))
+        keep_working = tf.logical_not(stop_loop)
         return keep_working
 
 
@@ -231,7 +228,7 @@ class LasModel(Classifier):
         """
         with tf.variable_scope("get_sequence_lengths"):
             max_vals = tf.argmax(logits, 1)
-            mask = tf.equal(max_vals, tf.constant(1, tf.int64))
+            mask = tf.equal(max_vals, tf.constant(0, tf.int64))
             current_mask = tf.logical_and(mask, tf.logical_not(done_mask))
             done_mask = tf.logical_or(mask, done_mask)
             time_vec = tf.ones(self.batch_size, tf.int32) * time + 1
@@ -242,7 +239,12 @@ class LasModel(Classifier):
 
     def body(self, loop_vars):
         ''' The body of the decoding while loop. Contains a manual enrolling
-            of the attend and spell computations.  '''
+            of the attend and spell computations. 
+        Args:
+            The loop variables from the previous iteration.
+        Returns:
+            The loop variables as computed during the current iteration.
+        '''
 
         prev_logits, cell_state, time, done_mask, logits_sequence_length = loop_vars
         time = time + 1
@@ -275,7 +277,16 @@ class DecodingTouple(_DecodingStateTouple):
     """ Tuple used by Attend and spell cells for `state_size`,
      `zero_state`, and output state.
       Stores three elements:
-      `(logits, cell_state, time)`, in that order.
+      `(logits, cell_state, time, done_mask, sequence_length)`, in that order.
+      Dimensions are:
+            logits:      [batch_size, None, label_no]
+        cell_state:      A nested list, with the cell variables as outlined in the 
+                         las cell code.
+              time:      A scalar recording the time.
+         done_mask:      A boolean mask vector of shape [batch_size] recording
+                         where eos tokens have been placed.
+        sequence_length: A vector of size [batch_size], recodring the position
+                         of the first eos for each batch element.
     """
     @property
     def dtype(self):

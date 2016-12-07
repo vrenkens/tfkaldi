@@ -560,7 +560,7 @@ class CrossEnthropyTrainer(Trainer):
                                                    targets[utt_no])
         norm_lev = tot_lev/num_frames
 
-        print('Example targets:     ', targets[0])
+        print('Example targets:    ', targets[0])
         print('Greedy  targets:    ', decoded_outputs[0])
         print('Decoded  length:', out_seq_length[0][0])
         

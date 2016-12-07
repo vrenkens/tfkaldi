@@ -20,7 +20,7 @@ from IPython.core.debugger import Tracer; debug_here = Tracer();
 #(if nothing has changed)
 TRAINFEATURES = False
 TESTFEATURES = False
-TRAIN = True
+TRAIN = False
 TEST_CTC = False
 TEST_LAS = True
 

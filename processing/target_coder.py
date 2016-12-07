@@ -84,34 +84,24 @@ class TextCoder(TargetCoder):
         '''create the alphabet of characters'''
 
         alphabet = []
-
         # end of sentence token
         alphabet.append('<eos>')
-
         #start of sentence token
         alphabet.append('<sos>')
-
         #space
         alphabet.append('<space>')
-
         #comma
         alphabet.append(',')
-
         #period
         alphabet.append('.')
-
         #apostrophy
         alphabet.append('\'')
-
         #hyphen
         alphabet.append('-')
-
         #question mark
         alphabet.append('?')
-
         #unknown character
         alphabet.append('<unk>')
-
         #letters in the alphabet
         for letter in range(ord('a'), ord('z')+1):
             alphabet.append(chr(letter))
@@ -155,7 +145,6 @@ class PhonemeEncoder(TargetCoder):
                     'dx', 'eh', 'er', 'ey', 'f', 'g', 'hh', 'ih', 'iy', 'jh',
                     'k', 'l', 'm', 'n', 'ng', 'ow', 'oy', 'p', 'r', 's', 'sh',
                     't', 'th', 'uh', 'uw', 'v', 'w', 'y', 'z']
-
         return alphabet
 
 
@@ -170,10 +159,9 @@ class LasPhonemeEncoder(TargetCoder):
         code assumes it is there!
         """
 
-        alphabet = ['<sos>', '<eos>', 'sil', 'aa', 'ae', 'ah', 'aw', 'ay', 'b', 'ch', 'd', 'dh',
+        alphabet = ['<eos>', '<sos>', 'sil', 'aa', 'ae', 'ah', 'aw', 'ay', 'b', 'ch', 'd', 'dh',
                     'dx', 'eh', 'er', 'ey', 'f', 'g', 'hh', 'ih', 'iy', 'jh',
                     'k', 'l', 'm', 'n', 'ng', 'ow', 'oy', 'p', 'r', 's', 'sh',
                     't', 'th', 'uh', 'uw', 'v', 'w', 'y', 'z']
-
         return alphabet
         

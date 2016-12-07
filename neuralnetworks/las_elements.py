@@ -3,7 +3,6 @@ spell network.'''
 from __future__ import absolute_import, division, print_function
 
 from copy import copy
-import sys
 import collections
 import numpy as np
 import tensorflow as tf
@@ -13,7 +12,6 @@ from tensorflow.python.util import nest
 
 # we are currenly in neuralnetworks, add it to the path.
 from neuralnetworks.classifiers.layer import FFLayer
-from neuralnetworks.classifiers.layer import BLSTMLayer
 from neuralnetworks.classifiers.layer import PLSTMLayer
 from neuralnetworks.classifiers.activation import TfActivation
 from neuralnetworks.classifiers.activation import IdentityWrapper
@@ -185,7 +183,14 @@ class AttendAndSpellCell(RNNCell):
 
     def set_features(self, high_lvl_features, feature_seq_lengths):
         ''' Set the features when available, storing the features in the
-            object makes the cell call simpler.'''
+            object makes the cell call simpler. Additionally this function
+            evaluates the state net and stores the result moving this 
+            computation out of the loop for efficiency. The computed 
+            data is stored in the cell object for future reference.
+        Args:
+            high_lvl_featrues: The output computed by the listener. [batch_size,
+                                compresses_max_time, feature_dim]
+            feature_seq_lengths: The feature sequence lengths. [batch_size]'''
 
         self.high_lvl_features = high_lvl_features
         feature_shape = tf.Tensor.get_shape(high_lvl_features)
@@ -242,7 +247,7 @@ class AttendAndSpellCell(RNNCell):
 
             # The character distribution must initially be the sos token.
             # assuming encoding done as specified in the batch dispenser.
-            # 0: '>', 1: '<', 2:' ', ...
+            # 0: '<', 1: '>', 2:' ', ...
             # initialize to start of sentence token '<' as one hot encoding:
             # 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
             sos_np = np.ones(batch_size, dtype=np.int32)
@@ -420,7 +425,7 @@ class AttendAndSpellCell(RNNCell):
 
 class RNNStateList(list):
     """
-    State List class which allows dtype calls necessary because MultiRNNCell,
+    State List class which allows dtype calls. Necessary because MultiRNNCell,
     stores its output in vanilla python lists, which if used as state variables
     in the Attend and Spell cell cause the tensorflow unrollung function to
     crash, when it checks the data type.    .
@@ -463,6 +468,12 @@ class RNN(object):
     def __call__(self, single_input, state):
         """
         Computes the RNN outputs for a single input.
+        Args:
+            single_input: The input, for which the output given the
+                          state should be computed.
+            state: The las state
+        Returns:
+            A touple output, new state.
         """
         #assertion only works if state_is_touple is set to true.
         #assert len(state) == len(self.blocks)
@@ -504,6 +515,14 @@ class FeedForwardNetwork(object):
         self.layers[-1] = FFLayer(dimension.output_dim, identity_activation)
 
     def __call__(self, states_or_features):
+        """
+        Evaluate this feedforward net given the current input.
+        Args:
+            states_or_features: The state or feature vector this network
+                                should be evaluated on.
+        Returns:
+            The network output.
+        """
         hidden = states_or_features
         for i, layer in enumerate(self.layers):
             hidden = layer(hidden, scope=(self.name + '/' + str(i)),
