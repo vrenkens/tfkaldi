@@ -17,18 +17,18 @@ import prepare_data
 import kaldiGMM
 
 #here you can set which steps should be executed. If a step has been executed in the past the result have been saved and the step does not have to be executed again (if nothing has changed)
-GMMTRAINFEATURES = False 	#required 
+GMMTRAINFEATURES = True 	#required 
 GMMTESTFEATURES = False	 	#required if the performance of a GMM is tested
-DNNTRAINFEATURES = False 	#required
-DNNTESTFEATURES = False	 	#required if the performance of the DNN is tested
-TRAIN_MONO = False 			#required
-ALIGN_MONO = False			#required
+DNNTRAINFEATURES = True 	#required
+DNNTESTFEATURES = True	 	#required if the performance of the DNN is tested
+TRAIN_MONO = True 			#required
+ALIGN_MONO = True			#required
 TEST_MONO = False 			#required if the performance of the monphone GMM is tested
-TRAIN_TRI = False			#required if the triphone or LDA GMM is used for alignments
-ALIGN_TRI = False			#required if the triphone or LDA GMM is used for alignments
+TRAIN_TRI = True			#required if the triphone or LDA GMM is used for alignments
+ALIGN_TRI = True			#required if the triphone or LDA GMM is used for alignments
 TEST_TRI = False			#required if the performance of the triphone GMM is tested
-TRAIN_LDA = False			#required if the LDA GMM is used for alignments
-ALIGN_LDA = False			#required if the LDA GMM is used for alignments
+TRAIN_LDA = True			#required if the LDA GMM is used for alignments
+ALIGN_LDA = True			#required if the LDA GMM is used for alignments
 TEST_LDA = False			#required if the performance of the LDA GMM is tested
 TRAIN_NNET = True			#required
 TEST_NNET = True			#required if the performance of the DNN is tested
