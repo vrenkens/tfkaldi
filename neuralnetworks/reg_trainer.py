@@ -67,14 +67,22 @@ class Trainer(object):
                 name='output_seq_length')
 
             #compute the training outputs of the classifier
-            trainlogits, logit_seq_length, self.modelsaver, self.control_ops =\
+            train_logits, train_logit_seq_length, self.modelsaver, self.control_ops =\
                 classifier(
                     self.inputs, self.input_seq_length, targets=self.targets,
                     target_seq_length=self.target_seq_length, is_training=True,
                     decoding=False, reuse=None, scope='Classifier')
   
-            #compute the validation output of the classifier
-            logits, val_logit_seq_length, _, _ = classifier(
+            # use in the future to create a training validation graph
+            # without dropout. 
+            # compute the validation output of the classifier
+            # val_logits, val_logit_seq_length, _, _ = classifier(
+            #    self.inputs, self.input_seq_length, targets=self.targets,
+            #    target_seq_length=self.target_seq_length, is_training=False,
+            #    decoding=False, reuse=True, scope='Classifier')
+
+            #compute the decoding output of the classifier
+            dec_logits, dec_logit_seq_length, _, _ = classifier(
                 self.inputs, self.input_seq_length, targets=self.targets,
                 target_seq_length=self.target_seq_length, is_training=False,
                 decoding=True, reuse=True, scope='Classifier')
@@ -146,8 +154,9 @@ class Trainer(object):
 
                 #compute the training loss
                 loss = self.compute_loss(
-                    self.targets, trainlogits, logit_seq_length,
+                    self.targets, train_logits, train_logit_seq_length,
                     self.target_seq_length)
+
 
                 #operation to half the learning rate
                 self.halve_learningrate_op = learning_rate_fact.assign(
@@ -181,6 +190,10 @@ class Trainer(object):
                       + [update_num_frames]),
                     name='update_gradients')
 
+                self.val_update_op = tf.group(
+                    *([update_loss] + [update_num_frames]),
+                    name='val_loss_update')
+
                 #operation to compute the average loss in the batch
                 self.average_loss = batch_loss/tf.cast(num_frames, tf.float32)
 
@@ -190,9 +203,8 @@ class Trainer(object):
 
             with tf.name_scope('valid'):
                 #compute the outputs that will be used for validation
-                #TODO: push bugfix
-                self.outputs, self.outputs_seq_length = \
-                    self.validation(logits, val_logit_seq_length) 
+                self.dec_outputs, self.dec_outputs_seq_length = \
+                    self.validation(dec_logits, dec_logit_seq_length) 
 
             # add an operation to initialise all the variables in the graph
             self.init_op = tf.initialize_all_variables()
@@ -211,7 +223,7 @@ class Trainer(object):
         self.summarywriter = None
 
     @abstractmethod
-    def compute_loss(self, targets, logits, logit_seq_length,
+    def compute_loss(self, targets, logits, train_logit_seq_length,
                      target_seq_length):
         '''
         Compute the loss
@@ -224,7 +236,7 @@ class Trainer(object):
                 for eacht time step where B is the batch size
             logits: a list that contains a BxO tensor containing the output
                 logits for eacht time step where O is the output dimension
-            logit_seq_length: the length of all the input sequences as a vector
+            train_logit_seq_length: the length of all the input sequences as a vector
             target_seq_length: the length of all the output sequences as a
                 vector
 
@@ -235,7 +247,7 @@ class Trainer(object):
         raise NotImplementedError('Abstract method')
 
     @abstractmethod
-    def validation(self, logits, logit_seq_length):
+    def validation(self, val_logits, val_logit_seq_length):
         '''
         compute the outputs that will be used for validation
 
@@ -317,7 +329,6 @@ class Trainer(object):
         #feed in the minibatches one by one and accumulate the gradients and
         #loss
         for minibatch in minibatches:
-
             #pylint: disable=E1101
             self.update_op.run(
                 feed_dict={self.inputs:minibatch[0],
@@ -340,7 +351,6 @@ class Trainer(object):
             [loss, _, lr] = tf.get_default_session().run(
                 [self.average_loss, self.learning_rate,
                  self.apply_gradients_op])
-
 
         #reinitialize the batch variables
         #pylint: disable=E1101
@@ -384,17 +394,24 @@ class Trainer(object):
         outputs = []
         seq_lengths = []
         for minibatch in minibatches:
+            feed_dict = {self.inputs:minibatch[0],
+                         self.targets:minibatch[1],
+                         self.input_seq_length:minibatch[2],
+                         self.target_seq_length:minibatch[3]}
+            tf.get_default_session().run(
+                [self.val_update_op], feed_dict=feed_dict)
 
             feed_dict = {self.inputs:minibatch[0], 
                          self.input_seq_length:minibatch[2]}
             output, seq_length = tf.get_default_session().run(
-                [self.outputs, self.outputs_seq_length], feed_dict=feed_dict)
+                [self.dec_outputs, self.dec_outputs_seq_length], feed_dict=feed_dict)
             outputs.append(output)
             seq_lengths.append(seq_length)
 
         error = self.validation_metric(outputs[:len(targets)], seq_lengths, targets)
 
-        return error
+        val_loss = tf.get_default_session().run([self.average_loss])[0]
+        return error, val_loss
 
     def halve_learning_rate(self):
         '''halve the learning rate'''
@@ -464,6 +481,12 @@ class LasCrossEnthropyTrainer(Trainer):
         Returns:
             a scalar value containing the loss
         '''
+
+        with tf.variable_scope('weight_loss'):
+            trainable_weights = tf.trainable_variables()
+            weight_loss = 0
+            for trainable in trainable_weights:
+                weight_loss += tf.nn.l2_loss(trainable)
 
         with tf.name_scope('cross_enthropy_loss'):
 

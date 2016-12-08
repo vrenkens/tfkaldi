@@ -14,8 +14,8 @@ class Classifier(object):
 
     @abstractmethod
     def __call__(self, inputs, input_seq_length, targets=None,
-                 target_seq_length=None, is_training=False, reuse=False,
-                 scope=None):
+                 target_seq_length=None, is_training=False, decoding=False,
+                 reuse=None, scope=None):
         '''
         Add the neural net variables and operations to the graph
 

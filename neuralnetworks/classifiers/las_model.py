@@ -15,23 +15,27 @@ from las_elements import Listener
 from neuralnetworks.las_elements import AttendAndSpellCell
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
+#interface object containing general model information.
 GeneralSettings = collections.namedtuple(
     "GeneralSettings",
     "mel_feature_no, batch_size, target_label_no, dtype")
 
+#interface object containing settings related to the listener.
 ListenerSettings = collections.namedtuple(
     "ListenerSettings",
     "lstm_dim, plstm_layer_no, output_dim, out_weights_std")
 
+#interface object containing settings related to the attend and spell cell.
 AttendAndSpellSettings = collections.namedtuple(
     "AttendAndSpellSettings",
-    "decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers")
+    "decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers, \
+     net_out_prob")
 
 class LasModel(Classifier):
     """ A neural end to end network based speech model."""
 
     def __init__(self, general_settings, listener_settings,
-                 attend_and_spell_settings, decoding=False):
+                 attend_and_spell_settings):
         """
         Create a listen attend and Spell model. As described in,
         Chan, Jaitly, Le et al.
@@ -55,7 +59,6 @@ class LasModel(Classifier):
         self.mel_feature_no = self.gen_set.mel_feature_no
         self.batch_size = self.gen_set.batch_size
         self.target_label_no = self.gen_set.target_label_no
-        self.decoding = decoding
 
         #decoding constants
         self.max_decoding_steps = 100
@@ -67,7 +70,8 @@ class LasModel(Classifier):
         self.attend_and_spell_cell = AttendAndSpellCell(
             self, self.as_set.decoder_state_size,
             self.as_set.feedforward_hidden_units,
-            self.as_set.feedforward_hidden_layers)
+            self.as_set.feedforward_hidden_layers,
+            self.as_set.net_out_prob)
 
 
     def encode_targets_one_hot(self, targets):
@@ -103,11 +107,11 @@ class LasModel(Classifier):
             inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs 
         return inputs
 
-    def __call__(self, inputs, seq_length, is_training=False, reuse=True,
-                 scope=None, targets=None, target_seq_length=None):
+    def __call__(self, inputs, seq_length, is_training=False, decoding=False,
+                 reuse=True, scope=None, targets=None, target_seq_length=None):
         print('\x1b[01;32m' + "Adding LAS computations:")
         print("    training_graph:", is_training)
-        print("    decoding_graph:", self.decoding)
+        print("    decoding_graph:", decoding)
         print('\x1b[0m')
 
         if is_training is True:
@@ -133,7 +137,7 @@ class LasModel(Classifier):
             high_level_features, feature_seq_length \
                 = self.listener(inputs, seq_length, reuse)
 
-            if (self.decoding is not True) and (is_training is True):
+            if decoding is not True:
                 print('adding training attend and spell computations to the graph...')
                 #training mode
                 self.attend_and_spell_cell.set_features(high_level_features,
@@ -147,7 +151,7 @@ class LasModel(Classifier):
                                               scope='attend_and_spell')
                 logits_sequence_length = target_seq_length
             else:
-                print('adding attend and spell computations to the graph...')
+                print('adding decoding attend and spell computations to the graph...')
                 self.attend_and_spell_cell.set_features(high_level_features,
                                                         feature_seq_length)
                 cell_state = self.attend_and_spell_cell.zero_state(
@@ -178,13 +182,12 @@ class LasModel(Classifier):
 
             # The saver can be used to restore the variables in the graph
             # from file later.
-            if (is_training is True) or (self.decoding is True):
+            if is_training is True:
                 saver = tf.train.Saver()
             else:
                 saver = None
 
         print("Logits tensor shape:", tf.Tensor.get_shape(logits))
-
         #None is returned as no control ops are defined yet.
         return logits, logits_sequence_length, saver, None
 
@@ -198,7 +201,6 @@ class LasModel(Classifier):
         Returns:
             keep_working, true if the loop should continue.
         """
-
         _, _, time, done_mask, sequence_length = loop_vars
 
         #the encoding table has the eos token ">" placed at position 0.

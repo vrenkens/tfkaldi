@@ -5,8 +5,8 @@ from __future__ import absolute_import, division, print_function
 import shutil
 import os
 import itertools
-import tensorflow as tf
 import pickle
+import tensorflow as tf
 import neuralnetworks.classifiers.activation as act
 
 from neuralnetworks.classifiers.listener_model import ListenerModel
@@ -121,11 +121,11 @@ class Nnet(object):
 
             trainer.start_visualization(self.net_conf['savedir'] + '/logdir')
 
-        #start a tensorflow session
+        #create lists to store error and loss.
         loss_lst = []
         val_lst = []
 
-
+        #start a tensorflow session
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True #pylint: disable=E1101
         with tf.Session(graph=trainer.graph, config=config):
@@ -170,7 +170,7 @@ class Nnet(object):
 
                     current_loss = trainer.evaluate(val_data, val_labels)
                     print('validation loss at step %d: %f' %(step, current_loss))
-                    val_lst.append([step, validation_loss])
+                    val_lst.append([step, current_loss])
 
                     if self.net_conf['valid_adapt'] == 'True':
                         #if the loss increased, half the learning rate and go

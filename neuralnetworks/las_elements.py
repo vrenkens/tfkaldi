@@ -136,9 +136,11 @@ class AttendAndSpellCell(RNNCell):
           one_hot_char: (y) one hot encoded input and output char.
     """
     def __init__(self, las_model, decoder_state_size=40,
-                 feedforward_hidden_units=56, feedforward_hidden_layers=3):
+                 feedforward_hidden_units=56, feedforward_hidden_layers=3,
+                 net_out_prob=0.2):
         self.feedforward_hidden_units = int(feedforward_hidden_units)
         self.feedforward_hidden_layers = int(feedforward_hidden_layers)
+        self.net_out_prob = float(net_out_prob)
         #the decoder state size must be equal to the RNN size.
         self.dec_state_size = int(decoder_state_size)
         self.high_lvl_features = None
@@ -267,11 +269,10 @@ class AttendAndSpellCell(RNNCell):
         return StateTouple(pre_context_states, post_context_states,
                            one_hot_char, context_vector)
 
-    @staticmethod
-    def select_out_or_target(groundtruth_char, one_hot_char):
+    def select_out_or_target(self, groundtruth_char, one_hot_char):
         """ Select the last system output value, or the groundtrough.
             The probability of picking the ground trouth value is
-            given by the hardcoded net_out_prob value. """
+            given by self.net_out_prob value. """
 
         def pick_ground_truth():
             """ Return the true value, from the set annotations."""
@@ -283,8 +284,7 @@ class AttendAndSpellCell(RNNCell):
         def pred():
             """ Return the network output net_out_prob*100 percent
                 of the time."""
-            net_out_prob = 0.2
-            return tf.greater(rand_val, net_out_prob)
+            return tf.greater(rand_val, self.net_out_prob)
 
         rand_val = tf.random_uniform(shape=(), minval=0.0, maxval=1.0,
                                      dtype=tf.float32, seed=None,
