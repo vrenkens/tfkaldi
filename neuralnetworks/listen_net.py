@@ -12,7 +12,7 @@ import neuralnetworks.classifiers.activation as act
 from neuralnetworks.classifiers.listener_model import ListenerModel
 from neuralnetworks.classifiers.las_model import GeneralSettings
 from neuralnetworks.classifiers.las_model import ListenerSettings
-from neuralnetworks.trainer import CTCTrainer
+from neuralnetworks.reg_trainer import CTCTrainer
 from neuralnetworks.decoder import CTCDecoder
 
 from IPython.core.debugger import Tracer; debug_here = Tracer();
@@ -123,7 +123,8 @@ class Nnet(object):
 
         #create lists to store error and loss.
         loss_lst = []
-        val_lst = []
+        val_loss_lst = []
+        val_error_list = []
 
         #start a tensorflow session
         config = tf.ConfigProto()
@@ -131,7 +132,7 @@ class Nnet(object):
         with tf.Session(graph=trainer.graph, config=config):
             #initialise the trainer
             trainer.initialize()
-
+            
             #load the neural net if the starting step is not 0
             if step > 0:
                 trainer.restore_trainer(self.net_conf['savedir']
@@ -139,13 +140,15 @@ class Nnet(object):
 
             #do a validation step
             if val_data is not None:
-                validation_loss = trainer.evaluate(val_data, val_labels)
-                print('validation loss at step %d: %f' % (step, validation_loss))
+                validation_error, val_loss = trainer.evaluate(val_data, val_labels)
+                print('validation error at step %d: %f' % (step, validation_error))
+                print('validation loss at step %d: %f' % (step, val_loss))
                 validation_step = step
                 trainer.save_trainer(self.net_conf['savedir']
                                      + '/validation/validated')
                 num_retries = 0
-                val_lst.append([step, validation_loss])
+                val_error_list.append([step, validation_error])
+                val_loss_lst.append([step, val_loss])
 
             #start the training iteration
             while step < num_steps:
@@ -168,14 +171,16 @@ class Nnet(object):
                 if (step%int(self.net_conf['valid_frequency']) == 0
                         and val_data is not None):
 
-                    current_loss = trainer.evaluate(val_data, val_labels)
-                    print('validation loss at step %d: %f' %(step, current_loss))
-                    val_lst.append([step, current_loss])
+                    current_error, val_loss = trainer.evaluate(val_data, val_labels)
+                    print('validation error at step %d: %f' %(step, current_error))
+                    print('validation loss at step %d: %f' %(step, val_loss))
+                    val_error_list.append([step, current_error])
+                    val_loss_lst.append([step, val_loss])
 
                     if self.net_conf['valid_adapt'] == 'True':
                         #if the loss increased, half the learning rate and go
                         #back to the previous validation step
-                        if current_loss > validation_loss:
+                        if current_error > validation_error:
 
                             #go back in the dispenser
                             for _ in range(step-validation_step):
@@ -208,7 +213,7 @@ class Nnet(object):
                             continue
 
                         else:
-                            validation_loss = current_loss
+                            validation_error = current_error
                             validation_step = step
                             num_retries = 0
                             trainer.save_trainer(self.net_conf['savedir']
@@ -221,9 +226,9 @@ class Nnet(object):
 
             #save the final model
             trainer.save_model(self.net_conf['savedir'] + '/final')
-            #save the training plots.
-            pickle.dump([loss_lst, val_lst], open(self.net_conf['savedir']+ "/" \
-                                                  + 'plot.pkl', "wb"))
+            pickle.dump([loss_lst, val_loss_lst, val_error_list],
+                        open(self.net_conf['savedir']+ "/" \
+                             + 'plot.pkl', "wb"))
 
     def decode(self, reader, target_coder):
         '''

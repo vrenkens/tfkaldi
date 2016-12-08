@@ -26,7 +26,7 @@ ListenerSettings = collections.namedtuple(
 class ListenerModel(Classifier):
     """ A neural end to end network based speech model."""
 
-    def __init__(self, general_settings, listener_settings, decoding=False):
+    def __init__(self, general_settings, listener_settings):
         """
         Create a listen attend and Spell model. As described in,
         Chan, Jaitly, Le et al.
@@ -49,18 +49,18 @@ class ListenerModel(Classifier):
         self.mel_feature_no = self.gen_set.mel_feature_no
         self.batch_size = self.gen_set.batch_size
         self.target_label_no = self.gen_set.target_label_no
-        self.decoding = decoding
+
 
         #store the two model parts.
         self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no, 
                                  self.lst_set.output_dim, self.lst_set.out_weights_std)
 
-    def __call__(self, inputs, seq_length, is_training=False, reuse=True,
+    def __call__(self, inputs, seq_length, is_training=False, decoding=False, reuse=True,
                  scope=None, targets=None, target_seq_length=None):
 
         print('\x1b[01;32m' + "Adding LAS computations:")
         print("    training_graph:", is_training)
-        print("    decoding_graph:", self.decoding)
+        print("    decoding_graph:", decoding)
         print('\x1b[0m')
 
         input_shape = tf.Tensor.get_shape(inputs)
@@ -79,7 +79,7 @@ class ListenerModel(Classifier):
                                                             reuse)
         logits = high_level_features
 
-        if (is_training is True) or (self.decoding is True):
+        if is_training is True:
             saver = tf.train.Saver()
         else:
             saver = None

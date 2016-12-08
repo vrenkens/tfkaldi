@@ -7,8 +7,8 @@ from __future__ import absolute_import, division, print_function
 import os
 from six.moves import configparser
 #from neuralnetworks.nnet import Nnet 
-#from neuralnetworks.listen_net import Nnet
-from neuralnetworks.las_net import Nnet
+from neuralnetworks.listen_net import Nnet
+#from neuralnetworks.las_net import Nnet
 from processing import ark, prepare_data, feature_reader, batchdispenser, \
 target_coder, target_normalizers, score
 
@@ -28,8 +28,8 @@ TEST_LAS = False
 config = configparser.ConfigParser()
 
 #config_path = 'config/config_TIMIT.cfg'
-#config_path = 'config/config_TIMIT_listener.cfg'
-config_path = 'config/config_TIMIT_las.cfg'
+config_path = 'config/config_TIMIT_listener.cfg'
+#config_path = 'config/config_TIMIT_las.cfg'
 
 #config.read()
 config.read(config_path)
@@ -71,10 +71,10 @@ _, features, _ = reader.read_next_utt()
 input_dim = features.shape[1]
 
 #create the CTC coder
-#coder = target_coder.PhonemeEncoder(target_normalizers.timit_phone_norm)
+coder = target_coder.PhonemeEncoder(target_normalizers.timit_phone_norm)
 
 #create a Las coder
-coder = target_coder.LasPhonemeEncoder(target_normalizers.timit_phone_norm_las)
+#coder = target_coder.LasPhonemeEncoder(target_normalizers.timit_phone_norm_las)
 
 #create the neural net
 nnet = Nnet(config, input_dim, coder.num_labels)

@@ -405,8 +405,8 @@ class Trainer(object):
                          self.input_seq_length:minibatch[2]}
             output, seq_length = tf.get_default_session().run(
                 [self.dec_outputs, self.dec_outputs_seq_length], feed_dict=feed_dict)
-            outputs.append(output)
-            seq_lengths.append(seq_length)
+            outputs += list(output)
+            seq_lengths += list(seq_length)
 
         error = self.validation_metric(outputs[:len(targets)], seq_lengths, targets)
 
@@ -568,16 +568,11 @@ class LasCrossEnthropyTrainer(Trainer):
                 label probabilities of size [batch_size][max_input_length, dim].
             targets: a list containing the ground truth target labels
         '''
-        np_outputs = np.array(outputs)
         #concatenate the minibatches.
         batch_size = len(targets)
-        mini_batch_shape = outputs[0].shape
-        np_outputs = np.reshape(outputs, [batch_size, mini_batch_shape[1], mini_batch_shape[2]])
-        np_seq_length = np.reshape(np.array(out_seq_length), batch_size)
-        #remove outputs after the seq_length
         clean_outputs = []
         for batch_count in range(batch_size):
-            clean_outputs.append(np_outputs[batch_count, 0:(np_seq_length[batch_count]), :])            
+            clean_outputs.append(outputs[batch_count][0:(out_seq_length[batch_count]), :])
         decoded_outputs = self.greedy_search(clean_outputs)
         num_frames = 0.0
         tot_lev = 0.0
@@ -589,7 +584,7 @@ class LasCrossEnthropyTrainer(Trainer):
 
         print('Example targets:    ', targets[0])
         print('Greedy  targets:    ', decoded_outputs[0])
-        print('Decoded  length:', out_seq_length[0][0])
+        print('Decoded  length:', out_seq_length[0])
         
         return norm_lev
 
@@ -705,10 +700,6 @@ class CTCTrainer(Trainer):
                 output sequences are padded with -1
             targets: a list containing the ground truth target labels
         '''
-        conc = []
-        for out in outputs:
-            conc += list(out)
-        outputs = conc
         #remove the padding from the outputs
         trimmed_outputs = [o[np.where(o != -1)] for o in outputs]
         errors = 0

@@ -71,13 +71,13 @@ class Trainer(object):
                 classifier(
                     self.inputs, self.input_seq_length, targets=self.targets,
                     target_seq_length=self.target_seq_length, is_training=True,
-                    decoding=False, reuse=None, scope='Classifier')
+                    reuse=None, scope='Classifier')
   
             #compute the validation output of the classifier
             logits, val_logit_seq_length, _, _ = classifier(
                 self.inputs, self.input_seq_length, targets=self.targets,
                 target_seq_length=self.target_seq_length, is_training=False,
-                decoding=True, reuse=True, scope='Classifier')
+                reuse=True, scope='Classifier')
 
             #get a list of trainable variables in the decoder graph
             params = tf.trainable_variables()
