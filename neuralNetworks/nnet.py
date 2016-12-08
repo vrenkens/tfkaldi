@@ -238,7 +238,7 @@ class Nnet(object):
             trainer.save_model(self.conf['savedir'] + '/final')
 
         #compute the state prior and write it to the savedir
-        prior = dispenser.compute_target_count()
+        prior = dispenser.compute_target_count().astype(np.float32)
         prior = prior/prior.sum()
 
         np.save(self.conf['savedir'] + '/prior.npy', prior)
