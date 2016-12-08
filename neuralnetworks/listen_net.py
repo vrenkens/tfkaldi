@@ -170,6 +170,7 @@ class Nnet(object):
 
                     current_loss = trainer.evaluate(val_data, val_labels)
                     print('validation loss at step %d: %f' %(step, current_loss))
+                    val_lst.append([step, validation_loss])
 
                     if self.net_conf['valid_adapt'] == 'True':
                         #if the loss increased, half the learning rate and go

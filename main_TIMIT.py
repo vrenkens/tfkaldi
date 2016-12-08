@@ -70,10 +70,12 @@ reader = ark.ArkReader(
 _, features, _ = reader.read_next_utt()
 input_dim = features.shape[1]
 
-#create the coder
+#create the CTC coder
 #coder = target_coder.PhonemeEncoder(target_normalizers.timit_phone_norm)
 
+#create a Las coder
 coder = target_coder.LasPhonemeEncoder(target_normalizers.timit_phone_norm_las)
+
 #create the neural net
 nnet = Nnet(config, input_dim, coder.num_labels)
 

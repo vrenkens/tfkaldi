@@ -338,7 +338,6 @@ class AttendAndSpellCell(RNNCell):
 
             ### find the context vector. ###
                 # c_i = sum(alpha*h_i)
-                #context_vector = 0*context_vector                    
             # alpha_3d has shape: [batch_size, 1 , time].
             alpha_3d = tf.expand_dims(alpha, 1)
             # [batch_size, 1 , time] * [batch_size, time, state_dim]

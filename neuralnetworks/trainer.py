@@ -682,14 +682,14 @@ class CTCTrainer(Trainer):
                 output sequences are padded with -1
             targets: a list containing the ground truth target labels
         '''
-
+        conc = []
+        for out in outputs:
+            conc += list(out)
+        outputs = conc
         #remove the padding from the outputs
         trimmed_outputs = [o[np.where(o != -1)] for o in outputs]
-
         errors = 0
-
         for k, target in enumerate(targets):
-
             error_matrix = np.zeros([target.size + 1,
                                      trimmed_outputs[k].size + 1])
 
