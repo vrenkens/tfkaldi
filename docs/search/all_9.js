@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['initialize',['initialize',['../classnnetgraph_1_1NnetTrainer.html#a0c5cc70fa7e5e0c2d3199c83dfb0317c',1,'nnetgraph::NnetTrainer']]]
+  ['initialize',['initialize',['../classneuralNetworks_1_1trainer_1_1Trainer.html#ab022770c18471e172c0435c97ab40804',1,'neuralNetworks::trainer::Trainer']]]
 ];

@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['update',['update',['../classnnetgraph_1_1NnetTrainer.html#adc3aaba0402b190ce7d5e878788ccfbc',1,'nnetgraph::NnetTrainer']]]
+  ['update',['update',['../classneuralNetworks_1_1trainer_1_1Trainer.html#af57a483914beeda45246167364b9b42c',1,'neuralNetworks::trainer::Trainer']]]
 ];

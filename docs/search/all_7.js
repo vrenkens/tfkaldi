@@ -1,7 +1,8 @@
 var searchData=
 [
-  ['get_5ffilterbanks',['get_filterbanks',['../namespacebase.html#a7b87e04f4d8f8afa49bffce3ae8723e6',1,'base']]],
-  ['getbatch',['getBatch',['../classbatchdispenser_1_1Batchdispenser.html#ad9042670b18c419371bedbbaa1528431',1,'batchdispenser::Batchdispenser']]],
-  ['getutt',['getUtt',['../classbatchdispenser_1_1FeatureReader.html#ad7bccb8a0947b268eb2a5f387a2a4263',1,'batchdispenser::FeatureReader']]],
-  ['graphopts',['graphopts',['../classkaldiGMM_1_1KaldiGMM.html#aa06fd76e2b0c189c70f1e12f6f7507ac',1,'kaldiGMM::KaldiGMM']]]
+  ['get_5fbatch',['get_batch',['../classprocessing_1_1batchdispenser_1_1BatchDispenser.html#a35ef5228e62ca26035931093f68f7638',1,'processing::batchdispenser::BatchDispenser']]],
+  ['get_5futt',['get_utt',['../classprocessing_1_1feature__reader_1_1FeatureReader.html#a0386ae32d50f827aa5aeccdf747b2ff2',1,'processing::feature_reader::FeatureReader']]],
+  ['gmm',['GMM',['../classkaldi_1_1gmm_1_1GMM.html',1,'kaldi::gmm']]],
+  ['gmm_2epy',['gmm.py',['../gmm_8py.html',1,'']]],
+  ['graphopts',['graphopts',['../classkaldi_1_1gmm_1_1GMM.html#a18ac55b8765491c6639b631977c40115',1,'kaldi::gmm::GMM']]]
 ];

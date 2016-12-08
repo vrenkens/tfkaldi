@@ -58,9 +58,6 @@ $(function() {
 
 </div><!-- top -->
 <div class="header">
-  <div class="summary">
-<a href="#nested-classes">Classes</a> &#124;
-<a href="#func-members">Functions</a>  </div>
   <div class="headertitle">
 <div class="title">batchdispenser Namespace Reference</div>  </div>
 </div><!--header-->
@@ -68,105 +65,9 @@ $(function() {
 
 <p>contain the functionality for read features and batches of features for neural network training and testing  
 <a href="#details">More...</a></p>
-<table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="nested-classes"></a>
-Classes</h2></td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classbatchdispenser_1_1Batchdispenser.html">Batchdispenser</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Class that dispenses batches of data for mini-batch training.  <a href="classbatchdispenser_1_1Batchdispenser.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classbatchdispenser_1_1FeatureReader.html">FeatureReader</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Class that can read features from a Kaldi archive and process them (cmvn and splicing)  <a href="classbatchdispenser_1_1FeatureReader.html#details">More...</a><br /></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
-Functions</h2></td></tr>
-<tr class="memitem:a61d3514b6acc0d20d08d57ce4f0aa958"><td class="memItemLeft" align="right" valign="top">def&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacebatchdispenser.html#a61d3514b6acc0d20d08d57ce4f0aa958">apply_cmvn</a> (utt, stats)</td></tr>
-<tr class="memdesc:a61d3514b6acc0d20d08d57ce4f0aa958"><td class="mdescLeft">&#160;</td><td class="mdescRight">apply mean and variance normalisation based on the previously computed statistics  <a href="#a61d3514b6acc0d20d08d57ce4f0aa958">More...</a><br /></td></tr>
-<tr class="separator:a61d3514b6acc0d20d08d57ce4f0aa958"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:afe5b1be3b6dbddfb6e1d535a5f481fb1"><td class="memItemLeft" align="right" valign="top">def&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacebatchdispenser.html#afe5b1be3b6dbddfb6e1d535a5f481fb1">splice</a> (utt, context_width)</td></tr>
-<tr class="memdesc:afe5b1be3b6dbddfb6e1d535a5f481fb1"><td class="mdescLeft">&#160;</td><td class="mdescRight">splice the utterance  <a href="#afe5b1be3b6dbddfb6e1d535a5f481fb1">More...</a><br /></td></tr>
-<tr class="separator:afe5b1be3b6dbddfb6e1d535a5f481fb1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>contain the functionality for read features and batches of features for neural network training and testing </p>
-</div><h2 class="groupheader">Function Documentation</h2>
-<a id="a61d3514b6acc0d20d08d57ce4f0aa958"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a61d3514b6acc0d20d08d57ce4f0aa958">&sect;&nbsp;</a></span>apply_cmvn()</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">def batchdispenser.apply_cmvn </td>
-          <td>(</td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>utt</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>stats</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p>apply mean and variance normalisation based on the previously computed statistics </p>
-<dl class="params"><dt>Parameters</dt><dd>
-  <table class="params">
-    <tr><td class="paramname">utt</td><td>the utterance feature numpy matrix </td></tr>
-    <tr><td class="paramname">stats</td><td>a numpy array containing the mean and variance statistics. The first row contains the sum of all the fautures and as a last element the total numbe of features. The second row contains the squared sum of the features and a zero at the end</td></tr>
-  </table>
-  </dd>
-</dl>
-<dl class="section return"><dt>Returns</dt><dd>a numpy array containing the mean and variance normalized features </dd></dl>
-
-</div>
-</div>
-<a id="afe5b1be3b6dbddfb6e1d535a5f481fb1"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#afe5b1be3b6dbddfb6e1d535a5f481fb1">&sect;&nbsp;</a></span>splice()</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">def batchdispenser.splice </td>
-          <td>(</td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>utt</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>context_width</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p>splice the utterance </p>
-<dl class="params"><dt>Parameters</dt><dd>
-  <table class="params">
-    <tr><td class="paramname">utt</td><td>numpy matrix containing the utterance features to be spliced </td></tr>
-    <tr><td class="paramname">context</td><td>width how many frames to the left and right should be concatenated</td></tr>
-  </table>
-  </dd>
-</dl>
-<dl class="section return"><dt>Returns</dt><dd>a numpy array containing the spliced features </dd></dl>
-
-</div>
-</div>
-</div><!-- contents -->
+</div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
 Generated by &#160;<a href="http://www.doxygen.org/index.html">

@@ -71,48 +71,8 @@ $(function() {
 <li>Download and install <a href="https://github.com/kaldi-asr/kaldi">Kaldi</a></li>
 <li>Modify the config/config_*.cfg for your setup, specifically the directories</li>
 </ul>
-<h2>Code overview </h2>
-<p><a class="el" href="main_8py.html" title="run this file to go through the neural net training procedure, look at the config files in the config...">main.py</a>: Goes through the neural net training procedure, look at the config files in the config directory to modify the settings</p><ul>
-<li>Compute the features of training and testing set for GMM and DNN</li>
-<li>Train the monophone GMM with kaldi and get alignments</li>
-<li>Train the triphone GMM with kaldi and get alignments</li>
-<li>train the LDA+MLLT GMM with kaldi and get alignments</li>
-<li>Train the neural net with TensorFlow with the alignments as targets</li>
-<li>Get the state pseudo-likelihoods of the testing set using the neural net</li>
-<li>Decode the testing set with Kaldi using the state pseudo-likelihoods and report the results</li>
-</ul>
-<p>features/feat.py: Does feature computation currently supports:</p><ul>
-<li>mfcc</li>
-<li>fbank</li>
-<li>ssc</li>
-</ul>
-<p>features/prepare_data.py: data prep functionality</p><ul>
-<li>compute the features for all the utterances</li>
-<li>compute mean and variance statistics for normalisation</li>
-<li>shuffle the examples for mini-batch training</li>
-</ul>
-<p>io/ark.py: read and write ark format</p><ul>
-<li>defines a reader class for ark format</li>
-<li>defines a writer class for ark format</li>
-</ul>
-<p>io/batdispenser.py: reading and formatting features</p><ul>
-<li>defines a class that can read features and do some processing like splicing and cmvn</li>
-<li>defines a class that can create batches of data</li>
-</ul>
-<p>neural networks/nnet.py: neural network class for a kaldi-style neural network</p><ul>
-<li>train: train the neural net</li>
-<li>decode: compute pseudo-likelihood</li>
-</ul>
-<p>neural networks/nnetgraph.py: creating tensorflow graph structures</p><ul>
-<li>defines a abstract class for a neural network graph</li>
-<li>defines a class for a deep neural network, inherits from the neural network graph class</li>
-<li>defines a class for the training environment for a neural network</li>
-<li>defines a class for the decoding environment of a neural network</li>
-</ul>
-<p>neural networks/nnetlayer.py: layers for a neural network</p><ul>
-<li>defines a feed forward fully connected layer</li>
-</ul>
-<p>If you have a question or remark about the code or if you would like to contribute please mail me at <a href="#" onclick="location.href='mai'+'lto:'+'vin'+'ce'+'nt.'+'re'+'nke'+'ns'+'@es'+'at'+'.ku'+'le'+'uve'+'n.'+'be'; return false;">vince<span style="display: none;">.nosp@m.</span>nt.r<span style="display: none;">.nosp@m.</span>enken<span style="display: none;">.nosp@m.</span>s@es<span style="display: none;">.nosp@m.</span>at.ku<span style="display: none;">.nosp@m.</span>leuv<span style="display: none;">.nosp@m.</span>en.be</a> </p>
+<h2>Goal </h2>
+<p>Train a tensorflow neural net with kaldi alignments as targets </p>
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

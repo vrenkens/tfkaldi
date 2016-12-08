@@ -1,8 +1,7 @@
 var searchData=
 [
-  ['magspec',['magspec',['../namespacesigproc.html#a5ba6acab3d6dca55717833022c73764f',1,'sigproc']]],
+  ['magspec',['magspec',['../sigproc_8py.html#a39ef971559637288fa6f20e420884064',1,'processing::sigproc']]],
   ['main_2epy',['main.py',['../main_8py.html',1,'']]],
-  ['mel2hz',['mel2hz',['../namespacebase.html#ad48eefec9addbfda5f3ebdda3a775dba',1,'base']]],
-  ['mfcc',['mfcc',['../namespacebase.html#adb20d802ce92de2f1ea03ecac0e10ce4',1,'base']]],
-  ['monogmm',['MonoGmm',['../classkaldiGMM_1_1MonoGmm.html',1,'kaldiGMM']]]
+  ['max_5finput_5flength',['max_input_length',['../classprocessing_1_1batchdispenser_1_1BatchDispenser.html#a087ae53b8ea4c3240e9dddce622d3fdf',1,'processing::batchdispenser::BatchDispenser']]],
+  ['monogmm',['MonoGmm',['../classkaldi_1_1gmm_1_1MonoGmm.html',1,'kaldi::gmm']]]
 ];

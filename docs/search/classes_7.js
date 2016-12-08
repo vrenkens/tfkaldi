@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['monogmm',['MonoGmm',['../classkaldiGMM_1_1MonoGmm.html',1,'kaldiGMM']]]
+  ['monogmm',['MonoGmm',['../classkaldi_1_1gmm_1_1MonoGmm.html',1,'kaldi::gmm']]]
 ];

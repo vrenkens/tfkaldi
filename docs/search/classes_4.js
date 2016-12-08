@@ -1,6 +1,5 @@
 var searchData=
 [
-  ['featurecomputer',['FeatureComputer',['../classfeat_1_1FeatureComputer.html',1,'feat']]],
-  ['featurereader',['FeatureReader',['../classbatchdispenser_1_1FeatureReader.html',1,'batchdispenser']]],
-  ['fflayer',['FFLayer',['../classnnetlayer_1_1FFLayer.html',1,'nnetlayer']]]
+  ['featurecomputer',['FeatureComputer',['../classprocessing_1_1feat_1_1FeatureComputer.html',1,'processing::feat']]],
+  ['featurereader',['FeatureReader',['../classprocessing_1_1feature__reader_1_1FeatureReader.html',1,'processing::feature_reader']]]
 ];
