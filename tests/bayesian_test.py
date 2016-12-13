@@ -12,7 +12,6 @@ print(p1 + p2 + p3 + p4)
 
 for i in range(1, 4):
     print(i)
-
     total_prob = [p[i]*p[i - 1]]
     bayes = total_prob/np.sum(total_prob)
     print(bayes)

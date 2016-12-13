@@ -6,7 +6,7 @@ from __future__ import absolute_import, division, print_function
 
 import os
 from six.moves import configparser
-#from neuralnetworks.nnet import Nnet 
+#from neuralnetworks.nnet import Nnet
 #from neuralnetworks.listen_net import Nnet
 from neuralnetworks.las_net import Nnet
 from processing import ark, prepare_data, feature_reader, batchdispenser, \
@@ -163,7 +163,7 @@ if TEST_LAS:
 
     featdir = config.get('directories', 'test_features') + '/' +  config.get('dnn-features', 'name')
     textfile = config.get('directories', 'test_data') + '/test39.text'
-    
+
     #featdir = config.get('directories', 'train_features') + '/' +  config.get('dnn-features', 'name')
     #textfile = config.get('directories', 'train_data') + '/train39.text'
 
@@ -186,7 +186,7 @@ if TEST_LAS:
 
     #decode with the neural net
     resultsfolder = savedir + '/decode'
-    
+
     nbests = nnet.decode(featreader, coder)
     lev_dist = 0.0
     utts = 0.0
@@ -195,7 +195,7 @@ if TEST_LAS:
         utts += target.size
         lev_dist += score.edit_distance(target, decoded[0][0])
 
-    lev_dist = lev_dist/utts 
+    lev_dist = lev_dist/utts
 
     print('set lev_dist: %f' % lev_dist)
     utt_id = references.keys()[0]

@@ -9,9 +9,9 @@ import pickle
 import tensorflow as tf
 
 from neuralnetworks.classifiers.las_model import LasModel
-from neuralnetworks.classifiers.las_model import GeneralSettings
-from neuralnetworks.classifiers.las_model import ListenerSettings
-from neuralnetworks.classifiers.las_model import AttendAndSpellSettings
+from neuralnetworks.las_elements import GeneralSettings
+from neuralnetworks.las_elements import ListenerSettings
+from neuralnetworks.las_elements import AttendAndSpellSettings
 from neuralnetworks.reg_trainer import LasCrossEnthropyTrainer
 from neuralnetworks.decoder import SimpleSeqDecoder
 
@@ -144,7 +144,7 @@ class Nnet(object):
         with tf.Session(graph=trainer.graph, config=config):
             #initialise the trainer
             trainer.initialize()
-            
+
             #load the neural net if the starting step is not 0
             if step > 0:
                 trainer.restore_trainer(self.net_conf['savedir']
