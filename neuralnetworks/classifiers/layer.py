@@ -167,7 +167,6 @@ class PLSTMLayer(object):
                                           state_is_tuple=True,
                                           use_peepholes=True,
                                           initializer=lstm_init)
-
             if self.pyramidal is True:
                 inputs, sequence_lengths = concatenate(inputs,
                                                        sequence_lengths,

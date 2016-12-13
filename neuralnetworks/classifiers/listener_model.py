@@ -21,7 +21,7 @@ GeneralSettings = collections.namedtuple(
 
 ListenerSettings = collections.namedtuple(
     "ListenerSettings",
-    "lstm_dim, plstm_layer_no, output_dim, out_weights_std")
+    "lstm_dim, plstm_layer_no, output_dim, out_weights_std, pyramidal")
 
 class ListenerModel(Classifier):
     """ A neural end to end network based speech model."""
@@ -52,8 +52,9 @@ class ListenerModel(Classifier):
 
 
         #store the two model parts.
-        self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no, 
-                                 self.lst_set.output_dim, self.lst_set.out_weights_std)
+        self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no,
+                                 self.lst_set.output_dim, self.lst_set.out_weights_std,
+                                 self.lst_set.pyramidal)
 
     def __call__(self, inputs, seq_length, is_training=False, decoding=False, reuse=True,
                  scope=None, targets=None, target_seq_length=None):
@@ -70,7 +71,7 @@ class ListenerModel(Classifier):
             with tf.variable_scope("input_noise"):
                 #add input noise with a standart deviation of stddev.
                 stddev = 0.6
-                inputs = tf.random_normal(tf.shape(inputs), stddev=stddev) + inputs  
+                inputs = tf.random_normal(tf.shape(inputs), stddev=stddev) + inputs
 
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
@@ -79,7 +80,7 @@ class ListenerModel(Classifier):
                                                             reuse)
         logits = high_level_features
 
-        if is_training is True:
+        if (is_training is True) or (decoding is True):
             saver = tf.train.Saver()
         else:
             saver = None
@@ -88,4 +89,3 @@ class ListenerModel(Classifier):
         #None is returned as no control ops are defined yet.
         return logits, seq_length, saver, None
 
- 

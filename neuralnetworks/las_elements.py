@@ -26,7 +26,8 @@ class Listener(object):
     """
     A set of pyramidal blstms, which compute high level audio features.
     """
-    def __init__(self, lstm_dim, plstm_layer_no, output_dim, out_weights_std):
+    def __init__(self, lstm_dim, plstm_layer_no, output_dim, out_weights_std,
+                 pyramidal=True):
         """ Initialize the listener.
 
         Args:
@@ -40,6 +41,7 @@ class Listener(object):
         self.lstm_dim = int(lstm_dim)
         self.plstm_layer_no = int(plstm_layer_no)
         self.output_dim = output_dim
+        self.pyramidal = pyramidal
         if output_dim is not None:
             self.output_dim = int(self.output_dim)
 
@@ -47,8 +49,8 @@ class Listener(object):
         #term memory layer.
         self.blstm_layer = PLSTMLayer(lstm_dim, pyramidal=False)
         #on top of are three pyramidal BLSTM layers.
-        self.plstm_layer = PLSTMLayer(lstm_dim, pyramidal=True)
-        
+        self.plstm_layer = PLSTMLayer(lstm_dim, pyramidal=self.pyramidal)
+
         #set an output dimension, when using the Listener together with CTC.
         if self.output_dim != None:
             identity_activation = IdentityWrapper()
@@ -137,7 +139,7 @@ class AttendAndSpellCell(RNNCell):
     """
     def __init__(self, las_model, decoder_state_size=40,
                  feedforward_hidden_units=56, feedforward_hidden_layers=3,
-                 net_out_prob=0.2):
+                 net_out_prob=0.2, type_two=False):
         self.feedforward_hidden_units = int(feedforward_hidden_units)
         self.feedforward_hidden_layers = int(feedforward_hidden_layers)
         self.net_out_prob = float(net_out_prob)
@@ -146,11 +148,11 @@ class AttendAndSpellCell(RNNCell):
         self.high_lvl_features = None
         self.high_lvl_feature_dim = None
         self.psi = None
-        
+
         self.las_model = las_model
 
         #Determines whether the post_context_rnn will be used.
-        self.type_two = False
+        self.type_two = type_two
 
         #--------------------Create network functions-------------------------#
         # Feed-forward layer custom parameters. Vincent knows more about these.
@@ -186,8 +188,8 @@ class AttendAndSpellCell(RNNCell):
     def set_features(self, high_lvl_features, feature_seq_lengths):
         ''' Set the features when available, storing the features in the
             object makes the cell call simpler. Additionally this function
-            evaluates the state net and stores the result moving this 
-            computation out of the loop for efficiency. The computed 
+            evaluates the state net and stores the result moving this
+            computation out of the loop for efficiency. The computed
             data is stored in the cell object for future reference.
         Args:
             high_lvl_featrues: The output computed by the listener. [batch_size,
@@ -225,13 +227,13 @@ class AttendAndSpellCell(RNNCell):
     def zero_state(self, batch_size, dtype):
         """Return an initial state for the Attend and state cell.
         Args:
-            batch_size: The size of the minibatches, which are going to be fed into
+            batch_size: The size of the mini-batches, which are going to be fed into
                         this instantiation of this classifier.
             dtype: The data type used for the model.
         Returns:
             A StateTouple object filled with the state variables.
         """
-        #The batch_size has to be fixed in order to be able to corretly
+        #The batch_size has to be fixed in order to be able to correctly
         #return the state_sizes, should self.state_size() be called before
         #the zero states are created.
         assert batch_size == self.las_model.batch_size
@@ -239,7 +241,7 @@ class AttendAndSpellCell(RNNCell):
 
         zero_state_scope = type(self).__name__+ "_zero_state"
         with tf.variable_scope(zero_state_scope):
-            #----------------------Create Zero state tensors---------------------------#
+            #----------------------Create Zero state tensors------------------#
             # setting up the decoder_RNN_states, character distribution
             # and context vector variables.
             pre_context_states = self.pre_context_rnn.get_zero_states(
@@ -261,7 +263,7 @@ class AttendAndSpellCell(RNNCell):
             # output dimension.
             zero_context_np = np.zeros([batch_size,
                                         self.high_lvl_feature_dim])
-            context_vector = tf.constant(zero_context_np, dtype) 
+            context_vector = tf.constant(zero_context_np, dtype)
             #context_vector = tf.identity(context_vector)
             print("  context_vector shape:",
                   tf.Tensor.get_shape(context_vector))
@@ -270,8 +272,8 @@ class AttendAndSpellCell(RNNCell):
                            one_hot_char, context_vector)
 
     def select_out_or_target(self, groundtruth_char, one_hot_char):
-        """ Select the last system output value, or the groundtrough.
-            The probability of picking the ground trouth value is
+        """ Select the last system output value, or the ground-truth.
+            The probability of picking the ground truth value is
             given by self.net_out_prob value. """
 
         def pick_ground_truth():
@@ -302,7 +304,7 @@ class AttendAndSpellCell(RNNCell):
             logits: the las output logits for the current batch.
                     dimensions [batch_size, num_labels].
         Returns:
-            one_hot_char: One hot encoded selected characters. 
+            one_hot_char: One hot encoded selected characters.
                           shape [batch_size, num_labels].
         """
         with tf.variable_scope("greedy_decoding"):
@@ -327,11 +329,11 @@ class AttendAndSpellCell(RNNCell):
             ### compute the attention context. ###
             # e_(i,u) = phi(s_i)^T * psi(h_u)
             phi = self.state_net(pre_context_out)
-            # phi_3d shape: [batch_size, state_size, 1]                  
+            # phi_3d shape: [batch_size, state_size, 1]
             phi_3d = tf.expand_dims(phi, 2)
             # [batch_size, time, state_size] * [batch_size, state_size, 1]
             # = [batch_size, time, 1]
-            energy_3d = tf.batch_matmul(self.psi, phi_3d, 
+            energy_3d = tf.batch_matmul(self.psi, phi_3d,
                                         name='scalar_energy_matmul')
             scalar_energy = tf.squeeze(energy_3d, squeeze_dims=[2])
             alpha = tf.nn.softmax(scalar_energy)
@@ -341,7 +343,7 @@ class AttendAndSpellCell(RNNCell):
             # alpha_3d has shape: [batch_size, 1 , time].
             alpha_3d = tf.expand_dims(alpha, 1)
             # [batch_size, 1 , time] * [batch_size, time, state_dim]
-            # = [batch_size, 1, state_dim]                
+            # = [batch_size, 1, state_dim]
             context_vector_3d = tf.batch_matmul(alpha_3d, self.high_lvl_features,
                                                 name='context_matmul')
             context_vector = tf.squeeze(context_vector_3d, squeeze_dims=[1])
@@ -357,8 +359,8 @@ class AttendAndSpellCell(RNNCell):
                         valid groundtrouth values.
                         During decoding the cell_input may be none.
             state: The attend and spell cell state, must be a cell state
-                   Touple object contiaining the variables 
-                   pre_context_states, post_context_states, 
+                   Touple object contiaining the variables
+                   pre_context_states, post_context_states,
                    one_hot_char, context_vector, in that order.
             scope: a scope name for the cell.
             reuse: The reuse flag, set to true to reuse variables previously
@@ -411,7 +413,7 @@ class AttendAndSpellCell(RNNCell):
 
             ### Decoding ###
             one_hot_char = self.greedy_decoding(logits)
-            
+
             # pack everything up in structures which allow the
             # tensorflow unrolling functions to do their data-type checking.
             attend_and_spell_states = StateTouple(

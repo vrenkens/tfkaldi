@@ -23,13 +23,13 @@ GeneralSettings = collections.namedtuple(
 #interface object containing settings related to the listener.
 ListenerSettings = collections.namedtuple(
     "ListenerSettings",
-    "lstm_dim, plstm_layer_no, output_dim, out_weights_std")
+    "lstm_dim, plstm_layer_no, output_dim, out_weights_std, pyramidal")
 
 #interface object containing settings related to the attend and spell cell.
 AttendAndSpellSettings = collections.namedtuple(
     "AttendAndSpellSettings",
     "decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers, \
-     net_out_prob")
+     net_out_prob, type")
 
 class LasModel(Classifier):
     """ A neural end to end network based speech model."""
@@ -71,7 +71,8 @@ class LasModel(Classifier):
             self, self.as_set.decoder_state_size,
             self.as_set.feedforward_hidden_units,
             self.as_set.feedforward_hidden_layers,
-            self.as_set.net_out_prob)
+            self.as_set.net_out_prob,
+            self.as_set.type)
 
 
     def encode_targets_one_hot(self, targets):
@@ -127,7 +128,7 @@ class LasModel(Classifier):
             #one hot encode the targets
             target_one_hot = self.encode_targets_one_hot(targets_from_t_one)
         else:
-            assert self.decoding is True, "Las Training uses the targets."
+            assert decoding is True, "No targets found. Did you mean to create a decoding graph?"
 
         input_shape = tf.Tensor.get_shape(inputs)
         print("las input shape:", input_shape)
@@ -182,7 +183,7 @@ class LasModel(Classifier):
 
             # The saver can be used to restore the variables in the graph
             # from file later.
-            if is_training is True:
+            if (is_training is True) or (decoding is True):
                 saver = tf.train.Saver()
             else:
                 saver = None

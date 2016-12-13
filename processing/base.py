@@ -268,6 +268,9 @@ def delta(features):
     Returns:
         the features concatenated with the first order derivative
     '''
+    #where is the scaling they mention in the formula on:
+    #http://practicalcryptography.com/miscellaneous/machine-learning/guide-mel-frequency-cepstral-coefficients-mfccs/
+
     return numpy.concatenate((features, deriv(features)), 1)
 
 def ddelta(features):

@@ -54,12 +54,20 @@ class Nnet(object):
         #lstm_dim, plstm_layer_no, output_dim, out_weights_std
         self.lset = ListenerSettings(int(self.net_conf['num_units']),
                                      int(self.net_conf['num_layers']),
-                                     None, None)
+                                     None, None, int(self.net_conf['num_layers']))
+
+        if self.net_conf['post_context_rnn'] == 'True':
+            post_context_rnn = True
+        else:
+            post_context_rnn = False
+
+
         #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
-        self.asset = AttendAndSpellSettings(self.net_conf['state_size'],
-                                            self.net_conf['net_size'],
-                                            self.net_conf['n_hidden'],
-                                            self.net_conf['net_out_prob'])
+        self.asset = AttendAndSpellSettings(int(self.net_conf['state_size']),
+                                            int(self.net_conf['net_size']),
+                                            int(self.net_conf['n_hidden']),
+                                            float(self.net_conf['net_out_prob']),
+                                            post_context_rnn)
 
         self.classifier = LasModel(self.gset, self.lset, self.asset)
 
@@ -114,7 +122,8 @@ class Nnet(object):
             dispenser.max_target_length,
             float(self.net_conf['initial_learning_rate']),
             float(self.net_conf['learning_rate_decay']),
-            num_steps, numutterances_per_minibatch)
+            num_steps, numutterances_per_minibatch,
+            float(self.net_conf['l2_cost_weight']))
 
         #start the visualization if it is requested
         if self.net_conf['visualise'] == 'True':
@@ -256,7 +265,7 @@ class Nnet(object):
                                self.gset.target_label_no,
                                self.gset.dtype)
         decoding_classifier = \
-            LasModel(gset, self.lset, self.asset, decoding=True)
+            LasModel(gset, self.lset, self.asset)
         decoder = SimpleSeqDecoder(decoding_classifier, self.input_dim,
                                    reader.max_input_length)
         #start tensorflow session

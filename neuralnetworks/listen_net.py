@@ -56,7 +56,8 @@ class Nnet(object):
         self.listener_settings = ListenerSettings(self.net_conf['num_units'],
                                                   self.net_conf['num_layers'],
                                                   self.net_conf['output_dim'],
-                                                  0.1)
+                                                  0.1,
+                                                  self.net_conf['pyramidal'])
 
         self.classifier = ListenerModel(self.general_settings, self.listener_settings)
 
@@ -112,7 +113,8 @@ class Nnet(object):
             float(self.net_conf['initial_learning_rate']),
             float(self.net_conf['learning_rate_decay']),
             num_steps, numutterances_per_minibatch,
-            int(self.net_conf['beam_width']))
+            int(self.net_conf['beam_width']),
+            0.0)
 
         #start the visualization if it is requested
         if self.net_conf['visualise'] == 'True':
@@ -248,7 +250,7 @@ class Nnet(object):
         #create a decoder
         print('building the decoding graph')
         decoding_classifier = \
-            ListenerModel(self.general_settings, self.listener_settings, decoding=True)
+            ListenerModel(self.general_settings, self.listener_settings)
         decoder = CTCDecoder(decoding_classifier, self.input_dim,
                              reader.max_input_length,
                              int(self.net_conf['beam_width']))

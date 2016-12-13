@@ -7,8 +7,8 @@ from __future__ import absolute_import, division, print_function
 import os
 from six.moves import configparser
 #from neuralnetworks.nnet import Nnet 
-from neuralnetworks.listen_net import Nnet
-#from neuralnetworks.las_net import Nnet
+#from neuralnetworks.listen_net import Nnet
+from neuralnetworks.las_net import Nnet
 from processing import ark, prepare_data, feature_reader, batchdispenser, \
 target_coder, target_normalizers, score
 
@@ -22,14 +22,14 @@ TRAINFEATURES = False
 TESTFEATURES = False
 TRAIN = True
 TEST_CTC = False
-TEST_LAS = False
+TEST_LAS = True
 
 #read config file
 config = configparser.ConfigParser()
 
 #config_path = 'config/config_TIMIT.cfg'
-config_path = 'config/config_TIMIT_listener.cfg'
-#config_path = 'config/config_TIMIT_las.cfg'
+#config_path = 'config/config_TIMIT_listener.cfg'
+config_path = 'config/config_TIMIT_las.cfg'
 
 #config.read()
 config.read(config_path)
@@ -71,15 +71,20 @@ _, features, _ = reader.read_next_utt()
 input_dim = features.shape[1]
 
 #create the CTC coder
-coder = target_coder.PhonemeEncoder(target_normalizers.timit_phone_norm)
+#coder = target_coder.PhonemeEncoder(target_normalizers.timit_phone_norm)
 
 #create a Las coder
-#coder = target_coder.LasPhonemeEncoder(target_normalizers.timit_phone_norm_las)
+coder = target_coder.LasPhonemeEncoder(target_normalizers.timit_phone_norm_las)
 
 #create the neural net
 nnet = Nnet(config, input_dim, coder.num_labels)
 
 if TRAIN:
+    print('Backing up cfg for future reference...')
+    copyfile(config_path,
+         config.get('directories', 'expdir') + "/" \
+         + config.get('nnet', 'name') + '/used_config.cfg')
+
     #only shuffle if we start with initialisation
     if config.get('nnet', 'starting_step') == '0':
         #shuffle the examples on disk
@@ -192,12 +197,15 @@ if TEST_LAS:
 
     lev_dist = lev_dist/utts 
 
-    print('lev_dist: %f' % lev_dist)
+    print('set lev_dist: %f' % lev_dist)
     utt_id = references.keys()[0]
+    print('Utterance_id', utt_id)
     print(references[utt_id])
     print(coder.decode(nbests[utt_id][0][0]))
+    ex_lev = score.edit_distance(coder.encode(references[utt_id]),
+                                 nbests[utt_id][0][0])
+    target = coder.encode(references[utt_id])
+    #print(target)
+    #print(target.size)
+    print('example lev_dist/length:', ex_lev/target.size)
 
-print('Backing up cfg for future reference')
-copyfile(config_path,
-         config.get('directories', 'expdir') + "/" \
-         + config.get('nnet', 'name') + '/used_config.cfg')

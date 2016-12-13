@@ -14,7 +14,7 @@ class Trainer(object):
 
     def __init__(self, classifier, input_dim, max_input_length,
                  max_target_length, init_learning_rate, learning_rate_decay,
-                 num_steps, numutterances_per_minibatch):
+                 num_steps, numutterances_per_minibatch, l2_cost_weight):
         '''
         NnetTrainer constructor, creates the training graph
 
@@ -34,6 +34,7 @@ class Trainer(object):
         self.numutterances_per_minibatch = numutterances_per_minibatch
         self.max_input_length = max_input_length
         self.max_target_length = max_target_length
+        self.l2_cost_weight = l2_cost_weight
 
         #create the graph
         self.graph = tf.Graph()
@@ -487,6 +488,7 @@ class LasCrossEnthropyTrainer(Trainer):
             weight_loss = 0
             for trainable in trainable_weights:
                 weight_loss += tf.nn.l2_loss(trainable)
+            weight_loss = weight_loss/len(trainable_weights)
 
         with tf.name_scope('cross_enthropy_loss'):
 
@@ -509,8 +511,9 @@ class LasCrossEnthropyTrainer(Trainer):
 
             #compute the cross-enthropy loss
             loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(
-                nonseq_logits, nonseq_targets))
+                nonseq_logits, nonseq_targets)) 
 
+            loss = loss + self.l2_cost_weight * weight_loss
         return loss
 
     def validation(self, logits, logit_seq_length):
@@ -592,7 +595,7 @@ class CTCTrainer(Trainer):
     '''A trainer that minimises the CTC loss, the output sequences'''
     def __init__(self, classifier, input_dim, max_input_length,
                  max_target_length, init_learning_rate, learning_rate_decay,
-                 num_steps, numutterances_per_minibatch, beam_width):
+                 num_steps, numutterances_per_minibatch, beam_width, l2_cost_weight):
         '''
         NnetTrainer constructor, creates the training graph
 
@@ -614,7 +617,7 @@ class CTCTrainer(Trainer):
         super(CTCTrainer, self).__init__(
             classifier, input_dim, max_input_length, max_target_length,
             init_learning_rate, learning_rate_decay, num_steps, \
-              numutterances_per_minibatch)
+              numutterances_per_minibatch, l2_cost_weight)
 
     def compute_loss(self, targets, logits, logit_seq_length,
                      target_seq_length):
