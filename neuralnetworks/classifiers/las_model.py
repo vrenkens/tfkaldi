@@ -7,6 +7,7 @@ import tensorflow as tf
 from neuralnetworks.classifiers.classifier import Classifier
 from neuralnetworks.las_elements import Listener
 from neuralnetworks.las_elements import Speller
+from neuralnetworks.beam_search_speller import BeamSearchSpeller
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 
@@ -46,11 +47,21 @@ class LasModel(Classifier):
 
         #store the two model parts.
         self.listener = Listener(listener_settings)
-        self.speller = Speller(attend_and_spell_settings,
-                               self.batch_size,
-                               self.dtype,
-                               self.target_label_no,
-                               self.max_decoding_steps)
+
+        #create a greedy speller.
+        #self.speller = Speller(attend_and_spell_settings,
+        #                       self.batch_size,
+        #                       self.dtype,
+        #                       self.target_label_no,
+        #                       self.max_decoding_steps)
+
+        #create a beam search speller.
+        self.speller = BeamSearchSpeller(attend_and_spell_settings,
+                                         self.batch_size,
+                                         self.dtype,
+                                         self.target_label_no,
+                                         self.max_decoding_steps,
+                                         beam_width=2)
 
     def encode_targets_one_hot(self, targets):
         """

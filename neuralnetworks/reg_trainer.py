@@ -12,7 +12,8 @@ class Trainer(object):
     '''General class outlining the training environment of a classifier.'''
     __metaclass__ = ABCMeta
 
-    def __init__(self, classifier, input_dim, max_input_length,
+    def __init__(self, classifier, decoding_classifier,
+                 input_dim, max_input_length,
                  max_target_length, init_learning_rate, learning_rate_decay,
                  num_steps, numutterances_per_minibatch, l2_cost_weight):
         '''
@@ -68,24 +69,33 @@ class Trainer(object):
                 name='output_seq_length')
 
             #compute the training outputs of the classifier
-            train_logits, train_logit_seq_length, self.modelsaver, self.control_ops =\
-                classifier(
-                    self.inputs, self.input_seq_length, targets=self.targets,
-                    target_seq_length=self.target_seq_length, is_training=True,
-                    decoding=False, reuse=None, scope='Classifier')
-  
+            train_logits, train_logit_seq_length, self.modelsaver, \
+            self.control_ops = classifier(
+                self.inputs, self.input_seq_length, targets=self.targets,
+                target_seq_length=self.target_seq_length, is_training=True,
+                decoding=False, reuse=None, scope='Classifier')
+
             # use in the future to create a training validation graph
-            # without dropout. 
+            # without dropout.
             # compute the validation output of the classifier
             # val_logits, val_logit_seq_length, _, _ = classifier(
             #    self.inputs, self.input_seq_length, targets=self.targets,
             #    target_seq_length=self.target_seq_length, is_training=False,
             #    decoding=False, reuse=True, scope='Classifier')
 
+            #create the decoding inputs placeholder
+            self.decoding_inputs = tf.placeholder(
+                tf.float32, shape=[1, max_input_length, input_dim],
+                name='inputs')
+
+            #create the decoding sequence length placeholder
+            self.decoding_input_seq_length = tf.placeholder(
+                tf.int32, shape=[1], name='seq_length')
+
             #compute the decoding output of the classifier
-            dec_logits, dec_logit_seq_length, _, _ = classifier(
-                self.inputs, self.input_seq_length, targets=self.targets,
-                target_seq_length=self.target_seq_length, is_training=False,
+            self.decoding_inputs, dec_logit_seq_length, _, _ = decoding_classifier(
+                self.decoding_inputs, self.decoding_input_seq_length, targets=None,
+                target_seq_length=None, is_training=False,
                 decoding=True, reuse=True, scope='Classifier')
 
             #get a list of trainable variables in the decoder graph
@@ -205,7 +215,7 @@ class Trainer(object):
             with tf.name_scope('valid'):
                 #compute the outputs that will be used for validation
                 self.dec_outputs, self.dec_outputs_seq_length = \
-                    self.validation(dec_logits, dec_logit_seq_length) 
+                    self.validation(dec_logits, dec_logit_seq_length)
 
             # add an operation to initialise all the variables in the graph
             self.init_op = tf.initialize_all_variables()
@@ -402,14 +412,17 @@ class Trainer(object):
             tf.get_default_session().run(
                 [self.val_update_op], feed_dict=feed_dict)
 
-            feed_dict = {self.inputs:minibatch[0], 
-                         self.input_seq_length:minibatch[2]}
+            #TODO: loop over mini-bach elements here.
+            feed_dict = {self.decoding_inputs:minibatch[0][0, :, :],
+                         self.decoding_input_seq_length:minibatch[2][0]}
             output, seq_length = tf.get_default_session().run(
-                [self.dec_outputs, self.dec_outputs_seq_length], feed_dict=feed_dict)
+                [self.dec_outputs, self.dec_outputs_seq_length],
+                feed_dict=feed_dict)
             outputs += list(output)
             seq_lengths += list(seq_length)
 
-        error = self.validation_metric(outputs[:len(targets)], seq_lengths, targets)
+        error = self.validation_metric(outputs[:len(targets)],
+                                       seq_lengths, targets)
 
         val_loss = tf.get_default_session().run([self.average_loss])[0]
         return error, val_loss
@@ -511,7 +524,7 @@ class LasCrossEnthropyTrainer(Trainer):
 
             #compute the cross-enthropy loss
             loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(
-                nonseq_logits, nonseq_targets)) 
+                nonseq_logits, nonseq_targets))
 
             loss = loss + self.l2_cost_weight * weight_loss
         return loss
@@ -581,14 +594,14 @@ class LasCrossEnthropyTrainer(Trainer):
         tot_lev = 0.0
         for utt_no in range(0, len(decoded_outputs)):
             num_frames += targets[utt_no].size
-            tot_lev = tot_lev + self.edit_distance(decoded_outputs[utt_no], 
+            tot_lev = tot_lev + self.edit_distance(decoded_outputs[utt_no],
                                                    targets[utt_no])
         norm_lev = tot_lev/num_frames
 
         print('Example targets:    ', targets[0])
         print('Greedy  targets:    ', decoded_outputs[0])
         print('Decoded  length:', out_seq_length[0])
-        
+
         return norm_lev
 
 class CTCTrainer(Trainer):

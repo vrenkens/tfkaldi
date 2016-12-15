@@ -1,14 +1,17 @@
+from __future__ import absolute_import, division, print_function
+
 import collections
 import tensorflow as tf
 from tensorflow.python.util import nest
 
 from neuralnetworks.las_elements import AttendAndSpellCell
 from neuralnetworks.las_elements import DecodingTouple
-from neuralnetworks.las_elemetts import StateTouple
+from neuralnetworks.las_elements import StateTouple
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 
 class BeamList(list):
-    """ A deque, which is supposed to hold the beam.
+    """ A list, which is supposed to hold the beam variables.
     """
     @property
     def dtype(self):
@@ -61,7 +64,7 @@ class BeamSearchSpeller(object):
         self.dtype = dtype
         self.target_label_no = target_label_no
         self.max_decoding_steps = max_decoding_steps
-        self.beam_width = tf.constant(beam_width, tf.int32)
+        self.beam_width = beam_width
         self.attend_and_spell_cell = AttendAndSpellCell(
             self, self.as_set.decoder_state_size,
             self.as_set.feedforward_hidden_units,
@@ -108,19 +111,20 @@ class BeamSearchSpeller(object):
             cell_state = self.attend_and_spell_cell.zero_state(
                 self.batch_size, self.dtype)
 
-            with tf.variable_scope('beam_search_attend_and_spell'):
+            #beam_search_attend_and_spell.
+            with tf.variable_scope('attend_and_spell'):
 
                 time = tf.constant(0, tf.int32, shape=[])
+
                 probs = tf.ones(self.beam_width, tf.float32)
-                selected = tf.ones([self.beam_width, 1], tf.float32)
+                selected = tf.ones([self.beam_width, 1], tf.int32)
                 sequence_length = tf.ones(self.beam_width, tf.int32)
                 states = BeamList()
                 for _ in range(self.beam_width):
-                    states.append(cell_state)
-
-                done_mask = tf.cast(tf.zeros(self.beam_width), tf.bool)
-                loop_vars = BeamList(probs, selected, states,
-                                     time, sequence_length, done_mask)
+                    states.append(cell_state)                
+                done_mask = tf.cast(tf.zeros(self.beam_width), tf.bool)                
+                loop_vars = BeamList([probs, selected, states,
+                                      time, sequence_length, done_mask])
 
                 #set up the shape invariants for the while loop.
                 shape_invariants = loop_vars.get_shape()
@@ -135,9 +139,11 @@ class BeamSearchSpeller(object):
                 probs, selected, states, \
                     time, sequence_length, done_mask = result[0]
 
-                #TODO: select the beam with the largest probability here.
-
-
+                #Select the beam with the largest probability here.
+                #one hot encode the most likely beam and add a dimension for batch_size = 1.
+                logits = tf.expand_dims(tf.one_hot(selected[0], self.target_label_no), 0)
+                logits_sequence_length = sequence_length[0]
+                
         return logits, logits_sequence_length
 
     def cond(self, loop_vars):
@@ -183,10 +189,10 @@ class BeamSearchSpeller(object):
             vectors with unchanged sizes.
         """
         with tf.variable_scope("get_sequence_lengths"):
-            mask = tf.equal(max_vals, tf.constant(0, tf.int64))
+            mask = tf.equal(max_vals, tf.constant(0, tf.int32))
             #current_mask = tf.logical_and(mask, tf.logical_not(done_mask))
 
-            time_vec = tf.ones(self.batch_size, tf.int32)*(time+1)
+            time_vec = tf.ones(self.beam_width, tf.int32)*(time+1)
             logits_sequence_length = tf.select(done_mask,
                                                logits_sequence_length,
                                                time_vec)
@@ -202,52 +208,61 @@ class BeamSearchSpeller(object):
             The loop variables as computed during the current iteration.
         '''
 
-        probs, selected, states, \
+        beam_probs, selected, states, \
             time, sequence_length, done_mask = loop_vars
         time = time + 1
 
         #expand the beam
-        prob_lst_new = BeamList()
-        sel_lst_new = BeamList()
+        expanded_beam_probs_lst = BeamList()
+        expanded_selected_lst = BeamList()
+        beam_pos_lst = BeamList()
         states_new = BeamList()
 
-        for beam_el_no, cell_state in enumerate(states):
+        for beam_no, cell_state in enumerate(states):
             logits, cell_state = \
                 self.attend_and_spell_cell(None, cell_state)
-
             states_new.append(cell_state)
-            probs_new, selected_new = tf.nn.top_k(logits, k=self.beam_width)
-            probs_new = tf.nn.softmax(probs_new)
-            probs_new = probs_new*probs[beam_el_no]
-            prob_lst_new.append(probs_new)
-            sel_lst_new.append(selected_new)
+            full_probs = tf.nn.softmax(tf.squeeze(logits))
+            best_probs, selected_new = tf.nn.top_k(full_probs,
+                                                   k=self.beam_width,
+                                                   sorted=True)
+            new_beam_prob = tf.sqrt(best_probs * beam_probs[beam_no])
+            expanded_beam_probs_lst.append(new_beam_prob)
+            expanded_selected_lst.append(selected_new)
+            beam_pos_lst.append(tf.ones(self.beam_width)*beam_no)
+
 
         #prune away the unlikely expansions
-        prob_tensor = tf.pack(prob_lst_new, axis=0)
-        sel_tensor = tf.pack(sel_lst_new, axis=0)
-        best_probs, stay_indices = tf.nn.top_k(prob_tensor, k=self.beam_width)
-        #probs = tf.nn.softmax(best_probs) #good idea?
-        probs = best_probs
+        prob_tensor = tf.concat(0, expanded_beam_probs_lst)
+        sel_tensor = tf.concat(0, expanded_selected_lst)
+        beam_pos_tensor = tf.cast(tf.concat(0, beam_pos_lst), tf.int32)
+        best_probs, stay_indices = tf.nn.top_k(prob_tensor,
+                                               k=self.beam_width,
+                                               sorted=True)
 
-        new_seleted = sel_tensor[stay_indices]
-        selected = tf.concat(1, [selected, new_seleted])
+        new_selected = tf.gather(sel_tensor, stay_indices)
+        beam_pos_selected = tf.gather(beam_pos_tensor, stay_indices)
+        old_selected = tf.gather(selected, beam_pos_selected)
+
+        selected = tf.concat(1, [old_selected,
+                                 tf.expand_dims(new_selected, 1)])
         selected.set_shape([self.beam_width, None])
 
         #update the sequence lengths.
         done_mask, sequence_length = self.get_sequence_lengths(
-            time, new_seleted, done_mask, sequence_length)
+            time, new_selected, done_mask, sequence_length)
 
         #update the states
+        pos_lst = tf.unpack(beam_pos_selected)
         states = BeamList()
-        for i in range(self.beam_width):
-            state_no = tf.mod(stay_indices[i] + 1, self.beam_width)
-            state = StateTouple(states_new[state_no].pre_context_states,
-                                states_new[state_no].post_context_states,
-                                tf.one_hot(new_seleted[i],
-                                           self.target_label_no),
-                                states_new[state_no].context_vector)
+        for sel_no, pos in enumerate(pos_lst):
+            state = StateTouple(states_new[sel_no].pre_context_states,
+                                states_new[sel_no].post_context_states,
+                                tf.expand_dims(tf.one_hot(new_selected[sel_no],
+                                                          self.target_label_no), 0),
+                                states_new[sel_no].context_vector)
             states.append(state)
 
-        out_vars = BeamList(probs, selected, states,
-                            time, sequence_length, done_mask)
+        out_vars = BeamList([best_probs, selected, states,
+                             time, sequence_length, done_mask])
         return [out_vars]

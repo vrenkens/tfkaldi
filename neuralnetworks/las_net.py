@@ -48,13 +48,15 @@ class Nnet(object):
 
         #create a Listener model, which will be paired with CTC later.
         #"mel_feature_no, batch_size, target_label_no, dtype"
-        self.gset = GeneralSettings(int(self.feat_conf['nfilt']),
-                                    int(self.net_conf['numutterances_per_minibatch']),
-                                    int(num_labels), tf.float32)
+        self.gset = GeneralSettings(
+            int(self.feat_conf['nfilt']),
+            int(self.net_conf['numutterances_per_minibatch']),
+            int(num_labels), tf.float32)
         #lstm_dim, plstm_layer_no, output_dim, out_weights_std
         self.lset = ListenerSettings(int(self.net_conf['num_units']),
                                      int(self.net_conf['num_layers']),
-                                     None, None, int(self.net_conf['num_layers']))
+                                     None, None,
+                                     int(self.net_conf['num_layers']))
 
         if self.net_conf['post_context_rnn'] == 'True':
             post_context_rnn = True
@@ -63,18 +65,20 @@ class Nnet(object):
 
 
         #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
-        self.asset = AttendAndSpellSettings(int(self.net_conf['state_size']),
-                                            int(self.net_conf['net_size']),
-                                            int(self.net_conf['n_hidden']),
-                                            float(self.net_conf['net_out_prob']),
-                                            post_context_rnn)
+        self.asset = AttendAndSpellSettings(
+            int(self.net_conf['state_size']),
+            int(self.net_conf['net_size']),
+            int(self.net_conf['n_hidden']),
+            float(self.net_conf['net_out_prob']),
+            post_context_rnn)
 
         self.classifier = LasModel(self.gset, self.lset, self.asset)
 
-        #create the wavenet
-        #self.classifier = Wavenet(num_labels + 1, int(self.net_conf['num_layers']),
-        #                          2, int(self.net_conf['num_units']), 7)
-
+        gset = GeneralSettings(self.gset.mel_feature_no,
+                               1,
+                               self.gset.target_label_no,
+                               self.gset.dtype)
+        self.decoding_classifier = LasModel(gset, self.lset, self.asset)
 
     def train(self, dispenser):
         '''
@@ -118,8 +122,8 @@ class Nnet(object):
         #put the las in a cross entropy training environment
         print('building the training graph')
         trainer = LasCrossEnthropyTrainer(
-            self.classifier, self.input_dim, dispenser.max_input_length,
-            dispenser.max_target_length,
+            self.classifier, self.decoding_classifier, self.input_dim,
+            dispenser.max_input_length, dispenser.max_target_length,
             float(self.net_conf['initial_learning_rate']),
             float(self.net_conf['learning_rate_decay']),
             num_steps, numutterances_per_minibatch,
@@ -152,8 +156,10 @@ class Nnet(object):
 
             #do a validation step
             if val_data is not None:
-                validation_error, val_loss = trainer.evaluate(val_data, val_labels)
-                print('validation error at step %d: %f' % (step, validation_error))
+                validation_error, val_loss = trainer.evaluate(val_data,
+                                                              val_labels)
+                print('validation error at step %d: %f' % (step,
+                                                           validation_error))
                 print('validation loss at step %d: %f' % (step, val_loss))
                 validation_step = step
                 trainer.save_trainer(self.net_conf['savedir']
@@ -173,7 +179,7 @@ class Nnet(object):
                 loss_lst.append([step, loss])
 
                 #print the progress
-                print ('step %d/%d loss: %f, learning rate: %f'
+                print('step %d/%d loss: %f, learning rate: %f'
                        %(step, num_steps, loss, lr))
 
                 #increment the step
@@ -266,7 +272,7 @@ class Nnet(object):
                                self.gset.dtype)
         decoding_classifier = \
             LasModel(gset, self.lset, self.asset)
-        decoder = SimpleSeqDecoder(decoding_classifier, self.input_dim,
+        decoder = SimpleSeqDecoder(self.decoding_classifier, self.input_dim,
                                    reader.max_input_length)
         #start tensorflow session
         config = tf.ConfigProto()

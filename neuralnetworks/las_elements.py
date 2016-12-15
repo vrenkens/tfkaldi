@@ -45,13 +45,12 @@ class Listener(object):
     def __init__(self, listener_settings):
         """ Initialize the listener.
 
-        Args:
+        Arguments:
             A listener settings object containing:
             lstm_dim: The number of LSTM cells per bidirectional layer in the
                       listener.
             plstm_layer_no: The number of plstm compression layers, every
-                      layer leads
-                            to a time compression by a factor of two.
+                      layer leads to a time compression by a factor of two.
             output_dim: The output dimension of the listener, for use with CTC.
                         Setting this to NONE produces no output layer.
             out_weights_std: The initial weight initialization standard
@@ -124,9 +123,9 @@ class DecodingTouple(_DecodingStateTouple):
                          the las cell code.
               time:      A scalar recording the time.
          done_mask:      A boolean mask vector of shape [batch_size] recording
-                         where eos tokens have been placed.
-        sequence_length: A vector of size [batch_size], recodring the position
-                         of the first eos for each batch element.
+                         where <eos> tokens have been placed.
+        sequence_length: A vector of size [batch_size], recording the position
+                         of the first <eos> for each batch element.
     """
     @property
     def dtype(self):
@@ -154,6 +153,10 @@ class DecodingTouple(_DecodingStateTouple):
         return shapes
 
 class Speller(object):
+    """
+    The speller takes high level features and implements an attention based
+    transducer to find the desired sequence labeling.
+    """
 
     def __init__(self, as_cell_settings, batch_size, dtype, target_label_no,
                  max_decoding_steps):
@@ -252,34 +255,37 @@ class Speller(object):
         Returns:
             keep_working, true if the loop should continue.
         """
-        _, _, time, done_mask, sequence_length = loop_vars
+        _, _, time, done_mask, _ = loop_vars
 
         #the encoding table has the eos token ">" placed at position 0.
         #i.e. ">", "<", ...
-        not_done_no = tf.reduce_sum(tf.cast(tf.logical_not(done_mask), tf.int32))
+        not_done_no = tf.reduce_sum(tf.cast(tf.logical_not(done_mask),
+                                            tf.int32))
         all_eos = tf.equal(not_done_no, tf.constant(0))
-        stop_loop = tf.logical_or(all_eos, tf.greater(time, self.max_decoding_steps))
+        stop_loop = tf.logical_or(all_eos, tf.greater(time,
+                                                      self.max_decoding_steps))
         keep_working = tf.logical_not(stop_loop)
         #keep_working = tf.Print(keep_working, [keep_working, sequence_length])
         return keep_working
 
 
-    def get_sequence_lengths(self, time, logits, done_mask, logits_sequence_length):
+    def get_sequence_lengths(self, time, logits, done_mask,
+                             logits_sequence_length):
         """
         Determine the sequence length of the decoded logits based on the
         greedy decoded end of sentence token probability, the current time and
-        a done mask, which keeps track of the first appreanche of an end of sentence
-        token.
+        a done mask, which keeps track of the first appreanche of an end of
+        sentence token.
 
         Args:
             time: The current time step [].
-            logits: The logits produced by the las cell in a matrix [batch_size, label_no].
-            done_mask: A boolen mask vector of size [batch_size]
+            logits: The logits produced by the las cell in a matrix
+                    [batch_size, label_no].
+            done_mask: A boolean mask vector of size [batch_size]
             logits_sequence_length: An integer vector with [batch_size] entries.
         Return:
-            Updated versions of the logits_sequence_length and mask vectors with unchanged
-            sizes.
-
+            Updated versions of the logits_sequence_length and mask
+            vectors with unchanged sizes.
         """
         with tf.variable_scope("get_sequence_lengths"):
 
@@ -303,17 +309,16 @@ class Speller(object):
             The loop variables as computed during the current iteration.
         '''
 
-        prev_logits, cell_state, time, done_mask, logits_sequence_length = loop_vars
+        prev_logits, cell_state, time, done_mask, \
+            logits_sequence_length = loop_vars
         time = time + 1
 
         logits, cell_state = \
             self.attend_and_spell_cell(None, cell_state)
 
         #update the sequence lengths.
-        done_mask, logits_sequence_length = self.get_sequence_lengths(time,
-                                                                      logits,
-                                                                      done_mask,
-                                                                      logits_sequence_length)
+        done_mask, logits_sequence_length = self.get_sequence_lengths(
+            time, logits, done_mask, logits_sequence_length)
 
         #store the logits.
         logits = tf.expand_dims(logits, 1)
@@ -321,7 +326,8 @@ class Speller(object):
         #pylint: disable=E1101
         logits.set_shape([self.batch_size, None, self.target_label_no])
 
-        out_vars = DecodingTouple(logits, cell_state, time, done_mask, logits_sequence_length)
+        out_vars = DecodingTouple(logits, cell_state, time,
+                                  done_mask, logits_sequence_length)
         return [out_vars]
 
 
@@ -591,8 +597,7 @@ class AttendAndSpellCell(RNNCell):
         return context_vector
 
 
-    def __call__(self, cell_input, state, scope=None, reuse=False,
-                 decoding_tree=False):
+    def __call__(self, cell_input, state, scope=None, reuse=False):
         """
         Do the computations for a single unrolling of the attend and
         spell network.
@@ -607,10 +612,6 @@ class AttendAndSpellCell(RNNCell):
             scope: a scope name for the cell.
             reuse: The reuse flag, set to true to reuse variables previously
                    defined.
-            decoding_tree: Flag indicating if a decoding graph
-                           is being constructed.
-                           If set to true the code assumes that decoding is
-                           done outside of the cell.
         Returns:
             An attend and spell state tuple object with updated values.
         """
@@ -624,10 +625,11 @@ class AttendAndSpellCell(RNNCell):
 
             if self.psi is None:
                 raise AttributeError("Features must be set.")
-            if decoding_tree is True:
-                #make sure no targets are present during decoding.
-                assert groundtruth_char is None, \
-                    "Targets cannot be set during decoding."
+
+            #make sure no targets are present during decoding.
+            #if decoding_tree is True:
+            #    assert groundtruth_char is None, \
+            #        "Targets cannot be set during decoding."
 
             #Pick the last output sometimes.
             if groundtruth_char is not None:
@@ -660,13 +662,7 @@ class AttendAndSpellCell(RNNCell):
                                            [pre_context_out, context_vector],
                                            name='char_net_input_concat')
             logits = self.char_net(char_net_input)
-
-            if decoding_tree is False:
-                ### Decoding ###
-                # in the training graph some greedy decoding needs to happen
-                # inside the cell.
-                one_hot_char = self.greedy_decoding(logits)
-
+            one_hot_char = self.greedy_decoding(logits)
 
             # pack everything up in structures which allow the
             # tensorflow unrolling functions to do their data-type checking.

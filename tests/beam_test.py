@@ -64,6 +64,7 @@ for time in range(0, 5):
         expanded_selected_lst.append(selected_new)
         beam_pos_lst.append(tf.ones(beam_width)*beam_no)
 
+    #pruning
     prob_tensor = tf.concat(0, expanded_beam_probs_lst)
     sel_tensor = tf.concat(0, expanded_selected_lst)
     beam_pos_tensor = tf.cast(tf.concat(0, beam_pos_lst), tf.int32)
@@ -75,6 +76,7 @@ for time in range(0, 5):
     old_selected = tf.gather(selected, beam_pos_selected)
     selected = tf.concat(1, [old_selected, tf.expand_dims(new_selected, 1)])
 
+    #loop logic
     mask = tf.equal(new_selected, tf.constant(0, tf.int32))
     current_mask = tf.logical_and(mask, tf.logical_not(done_mask))
     done_mask = tf.logical_or(mask, done_mask)
