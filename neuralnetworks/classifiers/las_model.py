@@ -11,7 +11,6 @@ from neuralnetworks.beam_search_speller import BeamSearchSpeller
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 
-
 class LasModel(Classifier):
     """ A neural end to end network based speech model."""
 
@@ -61,7 +60,7 @@ class LasModel(Classifier):
                                          self.dtype,
                                          self.target_label_no,
                                          self.max_decoding_steps,
-                                         beam_width=2)
+                                         beam_width=5)
 
     def encode_targets_one_hot(self, targets):
         """
@@ -127,7 +126,7 @@ class LasModel(Classifier):
             high_level_features, feature_seq_length \
                 = self.listener(inputs, seq_length, reuse)
 
-            logits, logits_sequence_length = self.speller(
+            output, output_sequence_length = self.speller(
                 high_level_features, feature_seq_length, targets,
                 target_seq_length, decoding)
 
@@ -138,7 +137,7 @@ class LasModel(Classifier):
             else:
                 saver = None
 
-        print("Logits tensor shape:", tf.Tensor.get_shape(logits))
+        print("output tensor shape:", tf.Tensor.get_shape(output))
         #None is returned as no control ops are defined yet.
-        return logits, logits_sequence_length, saver, None
+        return output, output_sequence_length, saver, None
 

@@ -84,9 +84,12 @@ class BeamSearchSpeller(object):
             target_seq_length: Target sequence length vector [batch_size]
             decoding: Flag indicating if a decoding graph must be set up.
         Returns:
-            logits: The output logits [batch_size, decoding_time, label_no]
-            logits_sequence_length: The logit sequence lengths [batch_size]
-            decoded_sequence: Only returned if decoding is True else None
+            if decoding is not True
+                logits: The output logits [batch_size, decoding_time, label_no]
+                logits_sequence_length: The logit sequence lengths [batch_size]
+            else:
+                decoded_sequence: A vector containing the the decoded sequence
+                decoded_sequence_length: a scalar indicating the length of that seq.
         """
 
         if decoding is not True:
@@ -102,6 +105,7 @@ class BeamSearchSpeller(object):
                                           sequence_length=target_seq_length,
                                           scope='attend_and_spell')
             logits_sequence_length = target_seq_length
+            return logits, logits_sequence_length
         else:
             print('Adding beam search attend and spell computations ...')
 
@@ -139,12 +143,13 @@ class BeamSearchSpeller(object):
                 probs, selected, states, \
                     time, sequence_length, done_mask = result[0]
 
-                #Select the beam with the largest probability here.
-                #one hot encode the most likely beam and add a dimension for batch_size = 1.
-                logits = tf.expand_dims(tf.one_hot(selected[0], self.target_label_no), 0)
-                logits_sequence_length = sequence_length[0]
+                # Select the beam with the largest probability here.
+                # The beam is sorted according to probabilities in descending
+                # order. 
+                # The most likely sequence is therefore located at position zero.
+                return selected[0], sequence_length[0]
                 
-        return logits, logits_sequence_length
+        
 
     def cond(self, loop_vars):
         """ Condition in charge of the attend and spell decoding

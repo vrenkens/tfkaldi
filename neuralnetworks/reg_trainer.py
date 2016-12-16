@@ -552,21 +552,6 @@ class LasCrossEnthropyTrainer(Trainer):
         return logits, logit_seq_length
 
     @staticmethod
-    def greedy_search(clean_output):
-        """ Extract the targets char probability
-        Args:
-            clean_output: A list of shape [batch_size][max_time, no_labels]
-        Returns:
-            utterance_char_batches: A list of shape [batch_size][max_time]"""
-        utterance_char_batches = []
-        for batch in range(0, len(clean_output)):
-            utterance_chars_nos = []
-            for time in range(0, clean_output[batch].shape[0]):
-                utterance_chars_nos.append(np.argmax(clean_output[batch][time, :]))
-            utterance_char_batches.append(np.array(utterance_chars_nos))
-        return utterance_char_batches
-
-    @staticmethod
     def edit_distance(seq1, seq2):
         """ Calculate edit distance between sequences x and y using
             matrix dynamic programming.  Return distance.
@@ -587,25 +572,29 @@ class LasCrossEnthropyTrainer(Trainer):
 
         Args:
             outputs: the validation output, which is a list containing the
-                label probabilities of size [batch_size][max_input_length, dim].
+                label probabilities of size [batch_size][max_input_length].
             targets: a list containing the ground truth target labels
         '''
         #concatenate the minibatches.
         batch_size = len(targets)
         clean_outputs = []
+
         for batch_count in range(batch_size):
-            clean_outputs.append(outputs[batch_count][0:(out_seq_length[batch_count]), :])
-        decoded_outputs = self.greedy_search(clean_outputs)
+
+            if len(outputs[batch_count]) != out_seq_length[batch_count]:
+                print("warning deconding seq problem found")
+
+            clean_outputs.append(outputs[batch_count][0:(out_seq_length[batch_count])])
         num_frames = 0.0
         tot_lev = 0.0
-        for utt_no in range(0, len(decoded_outputs)):
+        for utt_no in range(0, len(clean_outputs)):
             num_frames += targets[utt_no].size
-            tot_lev = tot_lev + self.edit_distance(decoded_outputs[utt_no],
+            tot_lev = tot_lev + self.edit_distance(clean_outputs[utt_no],
                                                    targets[utt_no])
         norm_lev = tot_lev/num_frames
 
         print('Example targets:    ', targets[0])
-        print('Greedy  targets:    ', decoded_outputs[0])
+        print('Greedy  targets:    ', clean_outputs[0])
         print('Decoded  length:', out_seq_length[0])
 
         return norm_lev
