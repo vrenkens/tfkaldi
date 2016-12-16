@@ -93,7 +93,7 @@ class Trainer(object):
                 tf.int32, shape=[1], name='seq_length')
 
             #compute the decoding output of the classifier
-            self.decoding_inputs, dec_logit_seq_length, _, _ = decoding_classifier(
+            self.dec_logits, self.dec_logit_seq_length, _, _ = decoding_classifier(
                 self.decoding_inputs, self.decoding_input_seq_length, targets=None,
                 target_seq_length=None, is_training=False,
                 decoding=True, reuse=True, scope='Classifier')
@@ -215,7 +215,7 @@ class Trainer(object):
             with tf.name_scope('valid'):
                 #compute the outputs that will be used for validation
                 self.dec_outputs, self.dec_outputs_seq_length = \
-                    self.validation(dec_logits, dec_logit_seq_length)
+                    self.validation(self.dec_logits, self.dec_logit_seq_length)
 
             # add an operation to initialise all the variables in the graph
             self.init_op = tf.initialize_all_variables()
@@ -413,13 +413,19 @@ class Trainer(object):
                 [self.val_update_op], feed_dict=feed_dict)
 
             #TODO: loop over mini-bach elements here.
-            feed_dict = {self.decoding_inputs:minibatch[0][0, :, :],
-                         self.decoding_input_seq_length:minibatch[2][0]}
-            output, seq_length = tf.get_default_session().run(
-                [self.dec_outputs, self.dec_outputs_seq_length],
-                feed_dict=feed_dict)
-            outputs += list(output)
-            seq_lengths += list(seq_length)
+            
+            padded_shape = minibatch[0].shape
+            for utt_no in range(padded_shape[0]):
+                single_utt_batch = np.reshape(minibatch[0][utt_no, :, :],
+                                              [1, padded_shape[1], padded_shape[2]])
+                single_utt_length = np.reshape(minibatch[2][utt_no], [1])
+                feed_dict = {self.decoding_inputs:single_utt_batch,
+                             self.decoding_input_seq_length:single_utt_length}
+                output, seq_length = tf.get_default_session().run(
+                    [self.dec_outputs, self.dec_outputs_seq_length],
+                    feed_dict=feed_dict)
+                outputs.append(output)
+                seq_lengths.append(seq_length)
 
         error = self.validation_metric(outputs[:len(targets)],
                                        seq_lengths, targets)
