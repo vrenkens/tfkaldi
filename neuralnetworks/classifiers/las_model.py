@@ -41,7 +41,7 @@ class LasModel(Classifier):
         self.target_label_no = self.gen_set.target_label_no
 
         #decoding constants
-        self.max_decoding_steps = 100
+        self.max_decoding_steps = 80
         #self.max_decoding_steps = 44
 
         #store the two model parts.

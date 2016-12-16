@@ -193,7 +193,7 @@ if TEST_LAS:
     for utt_id, decoded in nbests.iteritems():
         target = coder.encode(references[utt_id])
         utts += target.size
-        lev_dist += score.edit_distance(target, decoded[0][0])
+        lev_dist += score.edit_distance(target, decoded[0])
 
     lev_dist = lev_dist/utts
 
@@ -201,9 +201,10 @@ if TEST_LAS:
     utt_id = references.keys()[0]
     print('Utterance_id', utt_id)
     print(references[utt_id])
-    print(coder.decode(nbests[utt_id][0][0]))
+    print(coder.decode(nbests[utt_id][0]))
+    debug_here()
     ex_lev = score.edit_distance(coder.encode(references[utt_id]),
-                                 nbests[utt_id][0][0])
+                                 nbests[utt_id][0])
     target = coder.encode(references[utt_id])
     #print(target)
     #print(target.size)

@@ -41,7 +41,7 @@ class Decoder(object):
                 classifier(
                     self.inputs, self.input_seq_length, targets=None,
                     target_seq_length=None, is_training=False, decoding=True,
-                    reuse=False, scope='Classifier')
+                    reuse=None, scope='Classifier')
 
             #compute the outputs based on the classifier output logits
             self.outputs = self.get_outputs(logits, logits_seq_length)
@@ -224,7 +224,7 @@ class SimpleSeqDecoder(Decoder):
 
     def get_outputs(self, logits, logits_seq_length):
         '''
-        Put the classifier output logits through a softmax
+        Do nothing.
 
         Args:
             logits: A list containing a 1xO tensor for each timestep where O
@@ -233,16 +233,12 @@ class SimpleSeqDecoder(Decoder):
         Returns:
             An NxO tensor containing posterior distributions
         '''
-        sequences = tf.unpack(logits)
-        sequences = [tf.gather(sequences[s], tf.range(logits_seq_length[s]))
-                     for s in range(len(sequences))]
-        clean_logits = tf.pack(sequences)
-        #clean_logits = logits
-        return tf.nn.softmax(clean_logits), logits_seq_length
+
+        return logits, logits_seq_length
 
     def process_decoded(self, decoded):
         '''
-        Apply greedy search.
+        Do nothing.
 
         Args:
             decoded: the outputs of the decoding graph
@@ -251,18 +247,9 @@ class SimpleSeqDecoder(Decoder):
             the outputs of the decoding graph
         '''
         soflogits, seq_length = decoded
-        return self.greedy_search(soflogits), seq_length
+        return soflogits, seq_length
 
-    @staticmethod
-    def greedy_search(network_output):
-        """ Extract the targets char probability"""
-        utterance_char_batches = []
-        for batch in range(0, network_output.shape[0]):
-            utterance_chars_nos = []
-            for time in range(0, network_output.shape[1]):
-                utterance_chars_nos.append(np.argmax(network_output[batch, time, :]))
-            utterance_char_batches.append(np.array(utterance_chars_nos))
-        return utterance_char_batches
+
 
 
 

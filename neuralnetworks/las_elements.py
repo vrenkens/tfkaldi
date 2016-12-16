@@ -337,6 +337,7 @@ _AttendAndSpellStateTouple = \
         "AttendAndSpellStateTouple",
         "pre_context_states, post_context_states, one_hot_char, context_vector"
         )
+
 class StateTouple(_AttendAndSpellStateTouple):
     """ Tuple used by Attend and spell cells for `state_size`,
      `zero_state`, and output state.
@@ -368,6 +369,43 @@ class StateTouple(_AttendAndSpellStateTouple):
             flat_shapes.append(tf.Tensor.get_shape(flat_self[i]))
         shapes = nest.pack_sequence_as(self, flat_shapes)
         return shapes
+
+    def to_tensor(self):
+        """ This op turns the touple into a tensor.
+        Returns:
+            state_tensor: A tensor with the list contents concatenated along one dimension.
+            element_lengths: A tensor with the length of each element in the state_tensor.
+        """
+        with tf.variable_scope("StateTouple_to_StateTensor"):
+            flat_self = nest.flatten(self)
+            
+            element_lengths = []
+            squeezed_tensors = []
+            for i in range(0, len(flat_self)):
+                # state touple elements have the shape [Dimension(1), Dimension(?)].
+                # the ? depends on the network parameters. The zeroth dimension is not 
+                # interesting.
+                squeezed_element = tf.squeeze(flat_self[i])
+                squeezed_tensors.append(squeezed_element)
+                element_lengths.append(tf.Tensor.get_shape(squeezed_element))
+            state_tensor = tf.concat(0, squeezed_tensors)
+            return state_tensor, element_lengths
+
+
+    def load_tensor(self, state_tensor, element_lengths):
+        """
+        Take a state tensor and load its contents into the touple.
+        """
+        debug_here()
+        with tf.variable_scope("StateTensor_to_StateTouple"):
+            flat_self = []
+            start = 0
+            for length in element_lengths:
+                stop = start + length
+                list_element = tf.gather(state_tensor, tf.range(start, stop))
+                flat_self.append(list_element)
+                start = stop
+            self = nest.pack_sequence_as(self, flat_self)
 
 
 class AttendAndSpellCell(RNNCell):

@@ -594,7 +594,7 @@ class LasCrossEnthropyTrainer(Trainer):
         norm_lev = tot_lev/num_frames
 
         print('Example targets:    ', targets[0])
-        print('Greedy  targets:    ', clean_outputs[0])
+        print('       top Beam:    ', clean_outputs[0])
         print('Decoded  length:', out_seq_length[0])
 
         return norm_lev

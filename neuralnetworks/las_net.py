@@ -266,12 +266,6 @@ class Nnet(object):
         #create a decoder
         print('building the decoding graph')
         #mel_feature_no, batch_size, target_label_no, dtype
-        gset = GeneralSettings(self.gset.mel_feature_no,
-                               1,
-                               self.gset.target_label_no,
-                               self.gset.dtype)
-        decoding_classifier = \
-            LasModel(gset, self.lset, self.asset)
         decoder = SimpleSeqDecoder(self.decoding_classifier, self.input_dim,
                                    reader.max_input_length)
         #start tensorflow session

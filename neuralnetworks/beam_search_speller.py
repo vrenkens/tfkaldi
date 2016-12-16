@@ -39,7 +39,6 @@ class BeamList(list):
         return shapes
 
 
-
 class BeamSearchSpeller(object):
     """
     The speller takes high level features and implements an attention based
@@ -123,9 +122,13 @@ class BeamSearchSpeller(object):
                 probs = tf.ones(self.beam_width, tf.float32)
                 selected = tf.ones([self.beam_width, 1], tf.int32)
                 sequence_length = tf.ones(self.beam_width, tf.int32)
+                
+                #TODO:FIXME.
                 states = BeamList()
                 for _ in range(self.beam_width):
-                    states.append(cell_state)                
+                    states.append(cell_state.to_tensor())
+                cell_state.load_tensor(states[0][0],states[0][1])                    
+                
                 done_mask = tf.cast(tf.zeros(self.beam_width), tf.bool)                
                 loop_vars = BeamList([probs, selected, states,
                                       time, sequence_length, done_mask])
@@ -147,6 +150,15 @@ class BeamSearchSpeller(object):
                 # The beam is sorted according to probabilities in descending
                 # order. 
                 # The most likely sequence is therefore located at position zero.
+                selected = tf.Print(selected, [selected[0]],
+                                    message='Top beam',
+                                    summarize=5)
+                selected = tf.Print(selected, [selected[1]],
+                                    message='Second beam',
+                                    summarize=5)
+                selected = tf.Print(selected, [probs],
+                                    message='top beam probabilities',
+                                    summarize=self.beam_width)
                 return selected[0], sequence_length[0]
                 
         
@@ -258,14 +270,17 @@ class BeamSearchSpeller(object):
             time, new_selected, done_mask, sequence_length)
 
         #update the states
+        #TODO: A tensor cannot be a list index. Find another way to 
+        # do this?!?!?!?!.
         pos_lst = tf.unpack(beam_pos_selected)
         states = BeamList()
         for sel_no, pos in enumerate(pos_lst):
-            state = StateTouple(states_new[sel_no].pre_context_states,
-                                states_new[sel_no].post_context_states,
+            state = StateTouple(states_new[pos].pre_context_states,
+                                states_new[pos].post_context_states,
                                 tf.expand_dims(tf.one_hot(new_selected[sel_no],
-                                                          self.target_label_no), 0),
-                                states_new[sel_no].context_vector)
+                                                          self.target_label_no),
+                                               0),
+                                states_new[pos].context_vector)
             states.append(state)
 
         out_vars = BeamList([best_probs, selected, states,

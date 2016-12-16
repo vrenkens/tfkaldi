@@ -2,6 +2,7 @@
 contains functions to score the system'''
 
 import numpy as np
+from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 def CER(nbests, references):
     '''
@@ -51,6 +52,7 @@ def edit_distance(seq1, seq2):
         source, Ben Langmead:
         http://www.cs.jhu.edu/~langmea/resources/lecture_notes/dp_and_edit_dist.pdf
     """
+
     dmat = np.zeros((len(seq1)+1, len(seq2)+1), dtype=int)
     dmat[0, 1:] = range(1, len(seq2)+1)
     dmat[1:, 0] = range(1, len(seq1)+1)
