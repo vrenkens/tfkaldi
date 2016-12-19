@@ -16,11 +16,12 @@ from shutil import copyfile
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 #here you can set which steps should be executed.
-#If a step has been executed in the past the result have been saved and the step does not have to be executed again
+#If a step has been executed in the past the result have been 
+#saved and the step does not have to be executed again
 #(if nothing has changed)
 TRAINFEATURES = False
 TESTFEATURES = False
-TRAIN = True
+TRAIN = False
 TEST_CTC = False
 TEST_LAS = True
 
@@ -202,7 +203,6 @@ if TEST_LAS:
     print('Utterance_id', utt_id)
     print(references[utt_id])
     print(coder.decode(nbests[utt_id][0]))
-    debug_here()
     ex_lev = score.edit_distance(coder.encode(references[utt_id]),
                                  nbests[utt_id][0])
     target = coder.encode(references[utt_id])

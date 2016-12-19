@@ -60,7 +60,7 @@ class LasModel(Classifier):
                                          self.dtype,
                                          self.target_label_no,
                                          self.max_decoding_steps,
-                                         beam_width=5)
+                                         beam_width= self.gen_set.beam_width)
 
     def encode_targets_one_hot(self, targets):
         """

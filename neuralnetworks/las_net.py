@@ -51,7 +51,9 @@ class Nnet(object):
         self.gset = GeneralSettings(
             int(self.feat_conf['nfilt']),
             int(self.net_conf['numutterances_per_minibatch']),
-            int(num_labels), tf.float32)
+            int(num_labels), 
+            int(self.net_conf['beam_width']),
+            tf.float32)
         #lstm_dim, plstm_layer_no, output_dim, out_weights_std
         self.lset = ListenerSettings(int(self.net_conf['num_units']),
                                      int(self.net_conf['num_layers']),
@@ -77,6 +79,7 @@ class Nnet(object):
         gset = GeneralSettings(self.gset.mel_feature_no,
                                1,
                                self.gset.target_label_no,
+                               self.gset.beam_width,
                                self.gset.dtype)
         self.decoding_classifier = LasModel(gset, self.lset, self.asset)
 

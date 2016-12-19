@@ -25,7 +25,7 @@ from IPython.core.debugger import Tracer; debug_here = Tracer();
 #interface object containing general model information.
 GeneralSettings = collections.namedtuple(
     "GeneralSettings",
-    "mel_feature_no, batch_size, target_label_no, dtype")
+    "mel_feature_no, batch_size, target_label_no, beam_width, dtype")
 
 #interface object containing settings related to the listener.
 ListenerSettings = collections.namedtuple(
@@ -379,33 +379,59 @@ class StateTouple(_AttendAndSpellStateTouple):
         with tf.variable_scope("StateTouple_to_StateTensor"):
             flat_self = nest.flatten(self)
             
-            element_lengths = []
             squeezed_tensors = []
             for i in range(0, len(flat_self)):
                 # state touple elements have the shape [Dimension(1), Dimension(?)].
                 # the ? depends on the network parameters. The zeroth dimension is not 
                 # interesting.
-                squeezed_element = tf.squeeze(flat_self[i])
+                squeezed_element = tf.squeeze(flat_self[i], [0])
                 squeezed_tensors.append(squeezed_element)
-                element_lengths.append(tf.Tensor.get_shape(squeezed_element))
             state_tensor = tf.concat(0, squeezed_tensors)
-            return state_tensor, element_lengths
+            return state_tensor
 
+    def get_element_lengths(self):
+        """
+        Get the length of individual state elements as found in a concatenated
+        state Tensor.
+        Returns:
+            The element lengths of the single touple entries. 
+        """
+        flat_self = nest.flatten(self)            
+        element_lengths = []
+        for i in range(0, len(flat_self)):
+            # state touple elements have the shape [Dimension(1), Dimension(?)].
+            # the ? depends on the network parameters. The zeroth dimension is not 
+            # interesting.
+            squeezed_element = tf.squeeze(flat_self[i], [0])
+            element_lengths.append(int(tf.Tensor.get_shape(squeezed_element)[0]))
+        return element_lengths
 
-    def load_tensor(self, state_tensor, element_lengths):
+    def to_list(self, state_tensor, element_lengths):
         """
-        Take a state tensor and load its contents into the touple.
+        Take a state tensor and pack it into a list with the same
+        structure of self.
+        WARNING: The code assumes that the state_tensor input does indeed
+                 fit into the state list and that tensor sizes in element_lengths
+                 are correct.
+                 This assumption is not checked, if it's violated strange
+                 things will happen.
+        Args:
+            state_tensor: A concatinated attend and spell state tensor.
+            element_lengths: The element lengths of the state tensor.
+        Returns:
+            A repacked AttendAndSpellStateTouple container object.
         """
-        debug_here()
+        
         with tf.variable_scope("StateTensor_to_StateTouple"):
             flat_self = []
             start = 0
             for length in element_lengths:
                 stop = start + length
                 list_element = tf.gather(state_tensor, tf.range(start, stop))
+                list_element = tf.reshape(list_element, [1, length])
                 flat_self.append(list_element)
                 start = stop
-            self = nest.pack_sequence_as(self, flat_self)
+        return nest.pack_sequence_as(self, flat_self)
 
 
 class AttendAndSpellCell(RNNCell):

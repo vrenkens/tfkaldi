@@ -246,11 +246,6 @@ class SimpleSeqDecoder(Decoder):
         Returns:
             the outputs of the decoding graph
         '''
-        soflogits, seq_length = decoded
-        return soflogits, seq_length
-
-
-
-
-
-            
+        logits, seq_length = decoded
+        #debug_here()
+        return logits[:seq_length], seq_length
