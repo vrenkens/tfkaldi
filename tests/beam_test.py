@@ -48,7 +48,7 @@ beam_probs = tf.ones(beam_width)
 selected = tf.expand_dims(tf.ones(beam_width, tf.int32), 1)
 #selected = tf.expand_dims(tf.constant([0, 1, 1, 1]), 1)
 
-for time in range(0, 5):
+for time in range(0, 4):
     print(time)
 
     #beam expansion step.

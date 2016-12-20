@@ -21,7 +21,7 @@ from IPython.core.debugger import Tracer; debug_here = Tracer();
 #(if nothing has changed)
 TRAINFEATURES = False
 TESTFEATURES = False
-TRAIN = False
+TRAIN = True
 TEST_CTC = False
 TEST_LAS = True
 
