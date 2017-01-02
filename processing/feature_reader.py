@@ -124,8 +124,13 @@ def splice(utt, context_width):
             be concatenated
 
     Returns:
-        a numpy array containing the spliced features
+        a numpy array containing the spliced features, if the features are
+        too short to splice None will be returned
     '''
+
+    #return None if utterance is too short
+    if utt.shape[0]<1+2*context_width:
+        return None
 
     #create spliced utterance holder
     utt_spliced = np.zeros(

@@ -76,14 +76,17 @@ class BatchDispenser(object):
             utt_id, utt_mat, _ = self.feature_reader.get_utt()
 
             #get transcription
-            if utt_id in self.target_dict:
+            if utt_id in self.target_dict and utt_mat is not None:
                 targets = self.target_dict[utt_id]
                 encoded_targets = self.target_coder.encode(targets)
 
                 batch_inputs.append(utt_mat)
                 batch_targets.append(encoded_targets)
             else:
-                print 'WARNING no targets for %s' % utt_id
+                if utt_id not in self.target_dict:
+                    print 'WARNING no targets for %s' % utt_id
+                if utt_mat is None:
+                    print 'WARNING %s is too short to splice' % utt_id
 
         return batch_inputs, batch_targets
 
