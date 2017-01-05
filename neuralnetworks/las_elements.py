@@ -78,7 +78,7 @@ class Listener(object):
 
     def __call__(self, input_features, sequence_lengths, reuse):
         """ Compute the output of the listener function. """
-        #compute the base layer blstm output.
+        # compute the base layer blstm output.
         with tf.variable_scope(type(self).__name__, reuse=reuse):
             hidden_values, sequence_lengths = \
                 self.blstm_layer(input_features,

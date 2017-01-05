@@ -93,7 +93,7 @@ for time in range(0, 4):
 
 sess = tf.Session()
 with sess.as_default():
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
     #print(char_prob.eval())
     print('Prob tensor', prob_tensor.eval())
     print('Sel tensor', sel_tensor.eval())

@@ -38,7 +38,6 @@ class BeamList(list):
         shapes = nest.pack_sequence_as(self, flat_shapes)
         return shapes
 
-
 class BeamSearchSpeller(object):
     """
     The speller takes high level features and implements an attention based
@@ -48,7 +47,6 @@ class BeamSearchSpeller(object):
     def __init__(self, as_cell_settings, batch_size, dtype, target_label_no,
                  max_decoding_steps, beam_width):
         """ Initialize the listener.
-
         Arguments:
             A speller settings object containing:
             decoder_state_size: The size of the decoder RNN
@@ -128,7 +126,7 @@ class BeamSearchSpeller(object):
 
                 time = tf.constant(0, tf.int32, shape=[])
 
-                probs = tf.ones([self.beam_width, 1], tf.float32)
+                probs = tf.log(tf.ones([self.beam_width], tf.float32))
                 selected = tf.ones([self.beam_width, 1], tf.int32)
                 sequence_length = tf.ones(self.beam_width, tf.int32)
                 states = BeamList()
@@ -142,8 +140,6 @@ class BeamSearchSpeller(object):
                 #set up the shape invariants for the while loop.
                 shape_invariants = loop_vars.get_shape()
                 flat_invariants = nest.flatten(shape_invariants)
-                flat_invariants[0] = tf.TensorShape([self.beam_width,
-                                                     None])
                 flat_invariants[1] = tf.TensorShape([self.beam_width,
                                                      None])
                 shape_invariants = nest.pack_sequence_as(shape_invariants,
@@ -198,7 +194,6 @@ class BeamSearchSpeller(object):
         greedy decoded end of sentence token probability, the current time and
         a done mask, which keeps track of the first appearance of an end of
         sentence token.
-
         Arguments:
             time: The current time step [].
             max_vals: The max_vals labels numbers used during beam search
@@ -220,26 +215,37 @@ class BeamSearchSpeller(object):
             done_mask = tf.logical_or(mask, done_mask)
         return done_mask, logits_sequence_length
 
-    def body(self, loop_vars):
-        ''' The body of the decoding while loop. Contains a manual enrolling
-            of the attend and spell computations.
-        Arguments:
-            The loop variables from the previous iteration.
+
+    def expand_beam(self, time,  states, probs, done_mask, sequence_length):
+        """
+        Expand the beam considering beam width options per beam.
+        To expand all options set the beam width to self.target_label_no.
+        Args:
+            time: The decoding time scalar [].
+            states: The state list used by the attend and spell cell.
+            probs: The beam element log-probability sum vector [self.beam_width].
+            done_mask: Mask true if corresponding beam element selection contains
+                       an <eos> token.
+            sequence_length: Vector indicating the number of labels until the
+                             first <eos> token of the corresponding
+                             beam elememnt. The length is equal to time, if 
+                             the corresponding done mask element is false.
+
         Returns:
-            The loop variables as computed during the current iteration.
-        '''
-
-        probs, selected, states, \
-            time, sequence_length, done_mask = loop_vars
-        time = time + 1
-
-        #expand the beam
-        expanded_current_probs = tf.TensorArray(dtype=tf.float32,
-                                                size=self.beam_width,
-                                                name='expanded_current_probs')
-        expanded_beam_probs = tf.TensorArray(dtype=tf.float32,
-                                             size=self.beam_width,
-                                             name='expanded_beam_probs')
+            prob_tensor: Log probability sum vector of current and past labels
+                         [beam_width*beam_width]
+            new_sel_tensor: Vector containing new selected labels 
+                         [beam_width*beam_width]
+            beam_pos_tensor: Vector containing the beam of origin for each label
+                             and probability [beam_width*beam_width]. 
+            states_new: List containing the attend and spell cell state. 
+                        The one_hot_char entry in the list containts the selected
+                        label. It must be updatet after pruning.
+        """
+        #------------------ expand ------------------------------#
+        expanded_probs = tf.TensorArray(dtype=tf.float32,
+                                        size=self.beam_width,
+                                        name='expanded_current_probs')
         expanded_selected = tf.TensorArray(dtype=tf.int32,
                                            size=self.beam_width,
                                            name='expanded_selected')
@@ -258,39 +264,28 @@ class BeamSearchSpeller(object):
                                                    k=self.beam_width,
                                                    sorted=True)
 
-            prev_probs = probs[beam_no, :sequence_length[beam_no]]
             length = tf.cast(sequence_length[beam_no], tf.float32)
             #pylint: disable=W0640
             def update():
                 """ Compute the beam probability using the newly found
                     label probs """
-                update_val = ((tf.reduce_sum(tf.log(prev_probs))
-                               + tf.log(best_probs))
-                              / length)
+                update_val = (probs + tf.log(best_probs)) / length
                 return update_val 
 
             def const(): 
                 """ The probability for a finished beam is 
                     sum(log(probs))/length """
-                update_val = ((tf.reduce_sum(tf.log(prev_probs))
-                               + tf.zeros(self.beam_width)) 
-                              / length)
+                update_val = (probs + tf.zeros(self.beam_width) / length)
                 return update_val
 
             new_beam_prob = tf.cond(done_mask[beam_no], const, update)            
-            #new_beam_prob = \
-            #    (tf.reduce_sum(tf.log(probs[beam_no, :sequence_length[beam_no]])) 
-            #     + tf.log(best_probs))/sequence_length[beam_no]
-            expanded_current_probs = expanded_current_probs.write(beam_no,
-                                                                  new_beam_prob)
-            expanded_beam_probs = expanded_beam_probs.write(beam_no,
-                                                            best_probs)
+            expanded_probs = expanded_probs.write(beam_no,
+                                                  new_beam_prob)
             expanded_selected = expanded_selected.write(beam_no,
                                                         selected_new)
             beam_pos = beam_pos.write(beam_no, tf.ones(
                 self.beam_width, tf.int32)*beam_no)
 
-        #prune away the unlikely expansions
 
         # make shure while time <beam_width 
         # only relevant beams are considered
@@ -298,49 +293,88 @@ class BeamSearchSpeller(object):
         beam_count = tf.select(time < self.beam_width, 
                                time,
                                self.beam_width)
-        expanded_current_tensor = expanded_current_probs.gather(
-            tf.range(0, beam_count))
-        expanded_probs_tensor = expanded_beam_probs.gather(
-            tf.range(0, beam_count))
-        
+        expanded_probs_tensor = expanded_probs.gather(
+            tf.range(0, beam_count))            
         expanded_selected_tensor = expanded_selected.gather(
             tf.range(0, beam_count))
         beam_pos_tensor = beam_pos.gather(
             tf.range(0, beam_count))
-
-        current_tensor = tf.reshape(expanded_current_tensor, [-1])
         prob_tensor = tf.reshape(expanded_probs_tensor, [-1])
-        sel_tensor = tf.reshape(expanded_selected_tensor, [-1])
+        new_sel_tensor = tf.reshape(expanded_selected_tensor, [-1])
         beam_pos_tensor = tf.reshape(beam_pos_tensor, [-1])
-        _, stay_indices = tf.nn.top_k(current_tensor,
-                                      k=self.beam_width,
-                                      sorted=True)
 
-        #stay_indices = tf.Print(stay_indices, [tmp_probs, stay_indices],
-        #                        message='        Top beams',
-        #                        summarize=self.beam_width)
+        return prob_tensor, new_sel_tensor, beam_pos_tensor, states_new
 
-        #use the stay_indices to gather from expanded tensors.
-        new_selected = tf.gather(sel_tensor, stay_indices)
-        new_probs = tf.gather(prob_tensor, stay_indices)
+    def prune_beam(self, prob_tensor, new_sel_tensor, old_selected,
+                   beam_pos_tensor, done_mask, sequence_length):
+        """
+        Prune the beam retaining only the beam width most probable options.
+
+        Args:
+            prob_tensor: Log probability sum vector of current and past labels
+                         [beam_width*beam_width]
+            new_sel_tensor: Vector containing new selected labels 
+                         [beam_width*beam_width]
+            old_selected: [beam_width, time-1] tensor containing the selected labels
+                          for each beam element until time-1.
+            beam_pos_tensor: Vector containing the beam of origin for each label.
+            done_mask: Mask true if corresponding beam element selection contains
+                       an <eos> token.
+            sequence_length: Vector indicating the number of labels until the
+                             first <eos> token of the corresponding
+                             beam elememnt. The length is equal to time, if 
+                             the corresponding done mask element is false.
+
+        Returns:
+            Pruned or reshuffeled versions of very input vector. 
+        """
+
+        probs, stay_indices = tf.nn.top_k(prob_tensor,
+                                          k=self.beam_width,
+                                          sorted=True)
+
+        # use the stay_indices to gather from expanded tensors, this produces reduced size
+        # output vectors.
+        new_selected = tf.gather(new_sel_tensor, stay_indices)
+
         beam_pos_selected = tf.gather(beam_pos_tensor, stay_indices)
-        #use the beam_pos to gather from old beam data.
-        old_selected = tf.gather(selected, beam_pos_selected)
-        old_probs = tf.gather(probs, beam_pos_selected)
+        # use the beam_pos to gather from old beam data. These operations do not change the vector
+        # sizes.
+        old_selected = tf.gather(old_selected, beam_pos_selected)
+        probs = tf.gather(probs, beam_pos_selected)
         done_mask = tf.gather(done_mask, beam_pos_selected)
         sequence_length = tf.gather(sequence_length, beam_pos_selected)
+
+        return probs, new_selected, old_selected, beam_pos_selected, done_mask, sequence_length 
+
+
+    def body(self, loop_vars):
+        ''' The body of the decoding while loop. Contains a manual enrolling
+            of the attend and spell computations.
+        Arguments:
+            The loop variables from the previous iteration.
+        Returns:
+            The loop variables as computed during the current iteration.
+        '''
+
+        probs, old_selected, states, \
+            time, sequence_length, done_mask = loop_vars
+        time = time + 1
+
+        #beam expansion.
+        prob_expanded, sel_expanded, beam_element_positions, states_new = \
+            self.expand_beam(time, states, probs, done_mask, sequence_length)            
+
+        #beam pruning.
+        probs, new_selected, old_selected, beam_pos_selected, done_mask, sequence_length = \
+            self.prune_beam(prob_expanded, sel_expanded, old_selected,
+                            beam_element_positions, done_mask, sequence_length)
 
         #update the sequence lengths.
         done_mask, sequence_length = self.get_sequence_lengths(
             time, new_selected, done_mask, sequence_length)
 
-        add_probs = tf.expand_dims(new_probs, 1)
-        probs = tf.concat(1, [old_probs,
-                              add_probs])
-        #pylint: disable=E1101
-        #probs is a tensor not a touple, pylint doesnt know....
-        probs.set_shape([self.beam_width, None])
-
+        #append the new selections.
         add_selected = tf.expand_dims(new_selected, 1)
         selected = tf.concat(1, [old_selected,
                                  add_selected])
@@ -367,4 +401,3 @@ class BeamSearchSpeller(object):
         return [out_vars]
 
 
-class BeamMatrix
