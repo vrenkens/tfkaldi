@@ -233,7 +233,6 @@ class BeamSearchSpeller(object):
             time, sequence_length, done_mask = loop_vars
         time = time + 1
 
-
         #expand the beam
         expanded_current_probs = tf.TensorArray(dtype=tf.float32,
                                                 size=self.beam_width,
@@ -313,17 +312,19 @@ class BeamSearchSpeller(object):
         prob_tensor = tf.reshape(expanded_probs_tensor, [-1])
         sel_tensor = tf.reshape(expanded_selected_tensor, [-1])
         beam_pos_tensor = tf.reshape(beam_pos_tensor, [-1])
-        tmp_probs, stay_indices = tf.nn.top_k(current_tensor,
-                                              k=self.beam_width,
-                                              sorted=True)
+        _, stay_indices = tf.nn.top_k(current_tensor,
+                                      k=self.beam_width,
+                                      sorted=True)
 
         #stay_indices = tf.Print(stay_indices, [tmp_probs, stay_indices],
         #                        message='        Top beams',
         #                        summarize=self.beam_width)
 
+        #use the stay_indices to gather from expanded tensors.
         new_selected = tf.gather(sel_tensor, stay_indices)
         new_probs = tf.gather(prob_tensor, stay_indices)
         beam_pos_selected = tf.gather(beam_pos_tensor, stay_indices)
+        #use the beam_pos to gather from old beam data.
         old_selected = tf.gather(selected, beam_pos_selected)
         old_probs = tf.gather(probs, beam_pos_selected)
         done_mask = tf.gather(done_mask, beam_pos_selected)
@@ -364,3 +365,6 @@ class BeamSearchSpeller(object):
         out_vars = BeamList([probs, selected, states,
                              time, sequence_length, done_mask])
         return [out_vars]
+
+
+class BeamMatrix

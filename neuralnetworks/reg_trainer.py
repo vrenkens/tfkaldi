@@ -580,10 +580,7 @@ class LasCrossEnthropyTrainer(Trainer):
         clean_outputs = []
 
         for batch_count in range(batch_size):
-
-            if len(outputs[batch_count]) != out_seq_length[batch_count]:
-                print("warning deconding seq problem found")
-
+            #remove outputs after the <eos> token.
             clean_outputs.append(outputs[batch_count][0:(out_seq_length[batch_count])])
         num_frames = 0.0
         tot_lev = 0.0

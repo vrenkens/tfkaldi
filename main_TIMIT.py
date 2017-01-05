@@ -16,14 +16,14 @@ from shutil import copyfile
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
 #here you can set which steps should be executed.
-#If a step has been executed in the past the result have been 
+#If a step has been executed in the past the result have been
 #saved and the step does not have to be executed again
 #(if nothing has changed)
 TRAINFEATURES = False
 TESTFEATURES = False
 TRAIN = True
 TEST_CTC = False
-TEST_LAS = True
+TEST_LAS = False
 
 #read config file
 config = configparser.ConfigParser()
@@ -209,4 +209,3 @@ if TEST_LAS:
     #print(target)
     #print(target.size)
     print('example lev_dist/length:', ex_lev/target.size)
-
