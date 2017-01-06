@@ -9,6 +9,7 @@ import pickle
 import tensorflow as tf
 
 from neuralnetworks.classifiers.las_model import LasModel
+from neuralnetworks.classifiers.las_model import DropoutSettings
 from neuralnetworks.classifiers.las_model import GeneralSettings
 from neuralnetworks.classifiers.las_model import ListenerSettings
 from neuralnetworks.classifiers.las_model import AttendAndSpellSettings
@@ -50,7 +51,10 @@ class Nnet(object):
         #"mel_feature_no, batch_size, target_label_no, dtype"
         self.gset = GeneralSettings(int(self.feat_conf['nfilt']),
                                     int(self.net_conf['numutterances_per_minibatch']),
-                                    int(num_labels), tf.float32)
+                                    int(num_labels), tf.float32,
+                                    float(self.net_conf['input_noise_std']),
+                                    DropoutSettings(float(self.net_conf['input_keep_prob']),
+                                                    float(self.net_conf['hidden_keep_prob'])))
         #lstm_dim, plstm_layer_no, output_dim, out_weights_std
         self.lset = ListenerSettings(int(self.net_conf['num_units']),
                                      int(self.net_conf['num_layers']),
@@ -263,7 +267,9 @@ class Nnet(object):
         gset = GeneralSettings(self.gset.mel_feature_no,
                                1,
                                self.gset.target_label_no,
-                               self.gset.dtype)
+                               self.gset.dtype,
+                               0.0,
+                               DropoutSettings(1.0, 1.0))
         decoding_classifier = \
             LasModel(gset, self.lset, self.asset)
         decoder = SimpleSeqDecoder(decoding_classifier, self.input_dim,

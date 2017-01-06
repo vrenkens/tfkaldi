@@ -15,10 +15,13 @@ from las_elements import Listener
 from neuralnetworks.las_elements import AttendAndSpellCell
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
+#interface object for the drouput params
+DropoutSettings = collections.namedtuple("DropoutSettings", "input_keep_prob, hidden_keep_prob")
+
 #interface object containing general model information.
 GeneralSettings = collections.namedtuple(
     "GeneralSettings",
-    "mel_feature_no, batch_size, target_label_no, dtype")
+    "mel_feature_no, batch_size, target_label_no, dtype, input_noise_std, dropout_settings")
 
 #interface object containing settings related to the listener.
 ListenerSettings = collections.namedtuple(
@@ -67,13 +70,14 @@ class LasModel(Classifier):
 
         #store the two model parts.
         self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no,
-                                 self.lst_set.output_dim, self.lst_set.out_weights_std)
+                                 self.lst_set.output_dim, self.lst_set.out_weights_std,
+                                 self.gen_set.dropout_settings)
         self.attend_and_spell_cell = AttendAndSpellCell(
             self, self.as_set.decoder_state_size,
             self.as_set.feedforward_hidden_units,
             self.as_set.feedforward_hidden_layers,
             self.as_set.net_out_prob,
-            self.as_set.type)
+            self.gen_set.dropout_settings)
 
 
     def encode_targets_one_hot(self, targets):
@@ -104,9 +108,12 @@ class LasModel(Classifier):
         returns:
             Input features plus noise.
         """
-        with tf.variable_scope("input_noise"):
-            #add input noise with a standart deviation of stddev.
-            inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs
+        if stddev != 0:
+            with tf.variable_scope("input_noise"):
+                #add input noise with a standart deviation of stddev.
+                inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs
+        else:
+            print("stddev is zero no input noise added.")
         return inputs
 
     def __call__(self, inputs, seq_length, is_training=False, decoding=False,
@@ -117,7 +124,7 @@ class LasModel(Classifier):
         print('\x1b[0m')
 
         if is_training is True:
-            inputs = self.add_input_noise(inputs)
+            inputs = self.add_input_noise(inputs, self.gen_set.input_noise_std)
             #check if the targets are available for training.
             assert targets is not None
 
@@ -137,13 +144,14 @@ class LasModel(Classifier):
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
             high_level_features, feature_seq_length \
-                = self.listener(inputs, seq_length, reuse)
+                = self.listener(inputs, seq_length, is_training, reuse)
 
             if decoding is not True:
                 print('adding training attend and spell computations to the graph...')
                 #training mode
                 self.attend_and_spell_cell.set_features(high_level_features,
-                                                        feature_seq_length)
+                                                        feature_seq_length,
+                                                        is_training)
                 zero_state = self.attend_and_spell_cell.zero_state(
                     self.batch_size, self.dtype)
                 logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
@@ -161,7 +169,7 @@ class LasModel(Classifier):
                     self.batch_size, self.dtype)
 
                 with tf.variable_scope('attend_and_spell'):
-                    _, _, one_hot_char, _, _ = cell_state
+                    _, one_hot_char, _, _ = cell_state
                     logits = tf.expand_dims(one_hot_char, 1)
 
                     time = tf.constant(0, tf.int32, shape=[])

@@ -22,12 +22,15 @@ from IPython.core.debugger import Tracer; debug_here = Tracer();
 # disable the too few public methods complaint
 # pylint: disable=R0903
 
+#interface object for the drouput params
+DropoutSettings = collections.namedtuple("DropoutSettings", "input_keep_prob, hidden_keep_prob")
+
 class Listener(object):
     """
     A set of pyramidal blstms, which compute high level audio features.
     """
     def __init__(self, lstm_dim, plstm_layer_no, output_dim, out_weights_std,
-                 pyramidal=True):
+                 dropout_settings, pyramidal=True):
         """ Initialize the listener.
 
         Args:
@@ -38,6 +41,7 @@ class Listener(object):
                         Setting this to NONE produces no output layer.
             out_weights_std: The initial weight initialization standart deviation value.
         """
+        self.dropout_settings = dropout_settings
         self.lstm_dim = int(lstm_dim)
         self.plstm_layer_no = int(plstm_layer_no)
         self.output_dim = output_dim
@@ -57,9 +61,15 @@ class Listener(object):
             self.ff_layer = FFLayer(output_dim, identity_activation,
                                     out_weights_std)
 
-    def __call__(self, input_features, sequence_lengths, reuse):
+    def __call__(self, input_features, sequence_lengths, is_training=False, reuse=False):
         """ Compute the output of the listener function. """
         #compute the base layer blstm output.
+
+        if is_training is True:
+            input_features = tf.nn.dropout(input_features,
+                                           self.dropout_settings.input_keep_prob,
+                                           name="lst_input_dropout")
+
         with tf.variable_scope(type(self).__name__, reuse=reuse):
             hidden_values, sequence_lengths = \
                 self.blstm_layer(input_features,
@@ -68,6 +78,11 @@ class Listener(object):
                                  scope="blstm_layer")
             #move on to the plstm outputs.
             for counter in range(self.plstm_layer_no):
+
+                if is_training is True:
+                    hidden_values = tf.nn.dropout(hidden_values,
+                                                  self.dropout_settings.hidden_keep_prob,
+                                                  name="lst_hidden_dropout")
                 hidden_values, sequence_lengths = \
                     self.plstm_layer(hidden_values,
                                      sequence_lengths,
@@ -89,14 +104,13 @@ class Listener(object):
 _AttendAndSpellStateTouple = \
     collections.namedtuple(
         "AttendAndSpellStateTouple",
-        "pre_context_states, post_context_states, one_hot_char, context_vector, alpha"
+        "pre_context_states, one_hot_char, context_vector, alpha"
         )
 class StateTouple(_AttendAndSpellStateTouple):
     """ Tuple used by Attend and spell cells for `state_size`,
      `zero_state`, and output state.
       Stores four elements:
-      `(pre_context_states, post_context_states, one_hot_char,
-            context_vector)`, in that order.
+      `(pre_context_states, one_hot_char, context_vector)`, in that order.
     """
     @property
     def dtype(self):
@@ -139,7 +153,7 @@ class AttendAndSpellCell(RNNCell):
     """
     def __init__(self, las_model, decoder_state_size=40,
                  feedforward_hidden_units=56, feedforward_hidden_layers=3,
-                 net_out_prob=0.2, type_two=False):
+                 net_out_prob=0.2, dropout_settings=DropoutSettings(1.0, 1.0)):
         self.feedforward_hidden_units = int(feedforward_hidden_units)
         self.feedforward_hidden_layers = int(feedforward_hidden_layers)
         self.net_out_prob = float(net_out_prob)
@@ -149,11 +163,10 @@ class AttendAndSpellCell(RNNCell):
         self.high_lvl_feature_dim = None
         self.feature_time = None
         self.psi = None
+        self.is_training = False
 
         self.las_model = las_model
-
-        #Determines whether the post_context_rnn will be used.
-        self.type_two = type_two
+        self.dropout_settings = dropout_settings
 
         #--------------------Create network functions-------------------------#
         # Feed-forward layer custom parameters. Vincent knows more about these.
@@ -164,18 +177,21 @@ class AttendAndSpellCell(RNNCell):
                                              self.feedforward_hidden_units,
                                              self.feedforward_hidden_layers)
         self.state_net = FeedForwardNetwork(state_net_dimension,
-                                            activation, name='state_net')
+                                            activation,
+                                            self.dropout_settings,
+                                            name='state_net')
         # copy the state net any layer settings
         # => all properties, which are not explicitly changed
         # stay the same.
         featr_net_dimension = copy(state_net_dimension)
         self.featr_net = FeedForwardNetwork(featr_net_dimension,
-                                            activation, name='featr_net')
+                                            activation,
+                                            self.dropout_settings,
+                                            name='featr_net')
 
         self.pre_context_rnn = RNN(self.dec_state_size,
+                                   self.dropout_settings,
                                    name='pre_context_rnn')
-        self.post_context_rnn = RNN(self.dec_state_size,
-                                    name='post_context_rnn')
 
         char_net_dimension = FFNetDimension(
             output_dim=self.las_model.target_label_no,
@@ -184,9 +200,10 @@ class AttendAndSpellCell(RNNCell):
 
         self.char_net = FeedForwardNetwork(char_net_dimension,
                                            activation,
+                                           self.dropout_settings,
                                            name='char_net')
 
-    def set_features(self, high_lvl_features, feature_seq_lengths):
+    def set_features(self, high_lvl_features, feature_seq_lengths, is_training=False):
         ''' Set the features when available, storing the features in the
             object makes the cell call simpler. Additionally this function
             evaluates the state net and stores the result moving this
@@ -195,8 +212,9 @@ class AttendAndSpellCell(RNNCell):
         Args:
             high_lvl_featrues: The output computed by the listener. [batch_size,
                                 compresses_max_time, feature_dim]
-            feature_seq_lengths: The feature sequence lengths. [batch_size]'''
-
+            feature_seq_lengths: The feature sequence lengths. [batch_size]
+            is_training: if set to True regularization functions are added to the graph.'''
+        self.is_training = is_training
         self.high_lvl_features = high_lvl_features
         feature_shape = tf.Tensor.get_shape(high_lvl_features)
         self.feature_time = feature_shape[1]
@@ -206,7 +224,7 @@ class AttendAndSpellCell(RNNCell):
             self.high_lvl_feature_dim = feature_shape[2]
             feature_shape = tf.Tensor.get_shape(high_lvl_features)
             non_seq_features = seq2nonseq(high_lvl_features, feature_seq_lengths)
-            non_seq_psi = self.featr_net(non_seq_features)
+            non_seq_psi = self.featr_net(non_seq_features, is_training)
             self.psi = nonseq2seq(non_seq_psi, feature_seq_lengths,
                                   int(feature_shape[1]))
             print("  Psi tensor dimension:", tf.Tensor.get_shape(self.psi))
@@ -227,6 +245,7 @@ class AttendAndSpellCell(RNNCell):
         return self.zero_state(self.las_model.batch_size, self.las_model.dtype).get_shape()
 
     def zero_state(self, batch_size, dtype):
+
         """Return an initial state for the Attend and state cell.
         Args:
             batch_size: The size of the mini-batches, which are going to be fed into
@@ -248,8 +267,6 @@ class AttendAndSpellCell(RNNCell):
             # and context vector variables.
             pre_context_states = self.pre_context_rnn.get_zero_states(
                 batch_size, dtype)
-            post_context_states = self.post_context_rnn.get_zero_states(
-                batch_size, dtype)
 
             # The character distribution must initially be the sos token.
             # assuming encoding done as specified in the batch dispenser.
@@ -270,9 +287,7 @@ class AttendAndSpellCell(RNNCell):
             print("  context_vector shape:",
                   tf.Tensor.get_shape(context_vector))
             alpha = tf.constant(np.zeros([batch_size, self.feature_time]), dtype)
-
-        return StateTouple(pre_context_states, post_context_states,
-                           one_hot_char, context_vector, alpha)
+        return StateTouple(pre_context_states, one_hot_char, context_vector, alpha)
 
     def select_out_or_target(self, groundtruth_char, one_hot_char):
         """ Select the last system output value, or the ground-truth.
@@ -331,7 +346,7 @@ class AttendAndSpellCell(RNNCell):
         with tf.variable_scope("attention_context"):
             ### compute the attention context. ###
             # e_(i,u) = phi(s_i)^T * psi(h_u)
-            phi = self.state_net(pre_context_out)
+            phi = self.state_net(pre_context_out, self.is_training)
             # phi_3d shape: [batch_size, state_size, 1]
             phi_3d = tf.expand_dims(phi, 2)
             # [batch_size, time, state_size] * [batch_size, state_size, 1]
@@ -363,8 +378,7 @@ class AttendAndSpellCell(RNNCell):
                         During decoding the cell_input may be none.
             state: The attend and spell cell state, must be a cell state
                    Touple object contiaining the variables
-                   pre_context_states, post_context_states,
-                   one_hot_char, context_vector, in that order.
+                   pre_context_states, one_hot_char, context_vector, in that order.
             scope: a scope name for the cell.
             reuse: The reuse flag, set to true to reuse variables previously
                    defined.
@@ -376,8 +390,7 @@ class AttendAndSpellCell(RNNCell):
             groundtruth_char = cell_input
             # StateTouple extends a collection, pylint doesn't get it.
             # pylint: disable = E0633
-            pre_context_states, post_context_states, one_hot_char, \
-                context_vector, _ = state
+            pre_context_states, one_hot_char, context_vector, _ = state
 
             if self.psi is None:
                 raise AttributeError("Features must be set.")
@@ -395,24 +408,15 @@ class AttendAndSpellCell(RNNCell):
             print('pre_context input size:', tf.Tensor.get_shape(rnn_input))
 
             pre_context_out, pre_context_states = \
-                    self.pre_context_rnn(rnn_input, pre_context_states)
+                    self.pre_context_rnn(rnn_input, pre_context_states, self.is_training)
 
             ### compute the attention context. ###
             context_vector, alpha = self.attention_context(pre_context_out)
 
-            #add the post context rnn layer for type two cells.
-            if self.type_two is True:
-                post_context_out, post_context_states = \
-                self.post_context_rnn(context_vector, post_context_states)
-                char_net_input = tf.concat(1,
-                                           [pre_context_out,
-                                            post_context_out],
-                                           name='char_net_input_concat')
-            else:
-                char_net_input = tf.concat(1,
-                                           [pre_context_out, context_vector],
-                                           name='char_net_input_concat')
-            logits = self.char_net(char_net_input)
+            char_net_input = tf.concat(1,
+                                       [pre_context_out, context_vector],
+                                       name='char_net_input_concat')
+            logits = self.char_net(char_net_input, self.is_training)
 
             ### Decoding ###
             one_hot_char = self.greedy_decoding(logits)
@@ -421,7 +425,6 @@ class AttendAndSpellCell(RNNCell):
             # tensorflow unrolling functions to do their data-type checking.
             attend_and_spell_states = StateTouple(
                 RNNStateList(pre_context_states),
-                RNNStateList(post_context_states),
                 one_hot_char,
                 context_vector,
                 alpha)
@@ -450,27 +453,54 @@ class RNN(object):
     """
     Set up the RNN network which computes the decoder state.
     """
-    def __init__(self, lstm_dim, name):
+    def __init__(self, lstm_dim, dropout_settings, name):
         self.name = name
         self.layer_number = 1
-        #create the two required LSTM blocks.
-        self.blocks = []
+        self.dropout_settings = dropout_settings
+        #create a LSTM blocks.
+
         lstm_init = tf.random_uniform_initializer(minval=-0.1, maxval=0.1)
+        self.cell = rnn_cell.LSTMCell(int(lstm_dim),
+                                      use_peepholes=True,
+                                      state_is_tuple=True,
+                                      initializer=lstm_init)
+        self.blocks = []
         for _ in range(0, self.layer_number):
-            self.blocks.append(rnn_cell.LSTMCell(int(lstm_dim),
-                                                 use_peepholes=True,
-                                                 state_is_tuple=True,
-                                                 initializer=lstm_init))
+            self.blocks.append(self.cell)
         self.wrapped_cells = rnn_cell.MultiRNNCell(self.blocks,
                                                    state_is_tuple=True)
+
+        self.dropout_blocks = []
+        if self.layer_number == 1:
+            cell = tf.nn.rnn_cell.DropoutWrapper(self.cell,
+                                                 self.dropout_settings.input_keep_prob,
+                                                 1.0)
+        else:
+            cell = tf.nn.rnn_cell.DropoutWrapper(self.cell,
+                                                 self.dropout_settings.input_keep_prob,
+                                                 self.dropout_settings.hidden_keep_prob)
+        self.dropout_blocks.append(cell)
+        for _ in range(1, self.layer_number-1):
+            cell = tf.nn.rnn_cell.DropoutWrapper(self.cell, 1.0,
+                                                 self.dropout_settings.hidden_keep_prob)
+            self.dropout_blocks.append(cell)
+        if self.layer_number > 1:
+            #no dropout after the last layer.
+            self.dropout_blocks.append(self.cell)
+        self.dropout_cells = rnn_cell.MultiRNNCell(self.dropout_blocks,
+                                                   state_is_tuple=True)
+
         self.reuse = None
+
+
+
 
     def get_zero_states(self, batch_size, dtype):
         """ Get a list filled with zero states which can be used
             to start up the unrolled LSTM computations."""
         return RNNStateList(self.wrapped_cells.zero_state(batch_size, dtype))
 
-    def __call__(self, single_input, state):
+    def __call__(self, single_input, state, is_training):
         """
         Computes the RNN outputs for a single input.
         Args:
@@ -484,10 +514,14 @@ class RNN(object):
         #assert len(state) == len(self.blocks)
 
         with tf.variable_scope(self.name + '_call', reuse=self.reuse):
-            output = self.wrapped_cells(single_input, state)
 
-        if self.reuse is None:
-            self.reuse = True
+            if is_training is True:
+                output = self.dropout_cells(single_input, state)
+            else:
+                output = self.wrapped_cells(single_input, state)
+
+            if self.reuse is None:
+                self.reuse = True
 
         return output
 
@@ -503,11 +537,12 @@ class FeedForwardNetwork(object):
     """ A class defining the feedforward MLP networks used to compute the
         scalar energy values required for the attention mechanism.
     """
-    def __init__(self, dimension, activation, name):
+    def __init__(self, dimension, activation, dropout_settings, name):
         #store the settings
         self.dimension = dimension
         self.activation = activation
         self.name = name
+        self.dropout_settings = dropout_settings
         self.reuse = None
 
         #create the layers
@@ -519,7 +554,7 @@ class FeedForwardNetwork(object):
         identity_activation = IdentityWrapper()
         self.layers[-1] = FFLayer(dimension.output_dim, identity_activation)
 
-    def __call__(self, states_or_features):
+    def __call__(self, states_or_features, is_training):
         """
         Evaluate this feedforward net given the current input.
         Args:
@@ -528,8 +563,14 @@ class FeedForwardNetwork(object):
         Returns:
             The network output.
         """
-        hidden = states_or_features
+        if is_training is True:
+            hidden = tf.nn.dropout(states_or_features, self.dropout_settings.input_keep_prob)
+        else:
+            hidden = states_or_features
         for i, layer in enumerate(self.layers):
+            if (is_training is True) and (i > 0):
+                hidden = tf.nn.dropout(hidden, self.dropout_settings.hidden_keep_prob,
+                                       name=self.name+"/dropout")
             hidden = layer(hidden, scope=(self.name + '/' + str(i)),
                            reuse=(self.reuse))
         #set reuse to true after the variables have been created in the first
