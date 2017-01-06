@@ -68,7 +68,7 @@ class Trainer(object):
                 name='output_seq_length')
 
             #compute the training outputs of the classifier
-            train_logits, train_logit_seq_length, self.modelsaver, self.control_ops =\
+            train_logits, train_logit_seq_length, self.modelsaver, self.control_ops, _, _ =\
                 classifier(
                     self.inputs, self.input_seq_length, targets=self.targets,
                     target_seq_length=self.target_seq_length, is_training=True,
@@ -83,7 +83,7 @@ class Trainer(object):
             #    decoding=False, reuse=True, scope='Classifier')
 
             #compute the decoding output of the classifier
-            dec_logits, dec_logit_seq_length, _, _ = classifier(
+            dec_logits, dec_logit_seq_length, _, _, _, _ = classifier(
                 self.inputs, self.input_seq_length, targets=self.targets,
                 target_seq_length=self.target_seq_length, is_training=False,
                 decoding=True, reuse=True, scope='Classifier')

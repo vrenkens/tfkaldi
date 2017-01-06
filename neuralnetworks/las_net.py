@@ -273,6 +273,9 @@ class Nnet(object):
         config.gpu_options.allow_growth = True #pylint: disable=E1101
 
         nbests = dict()
+        alphas = dict()
+        utts = dict()
+        cmp_feats = dict()
 
         with tf.Session(graph=decoder.graph, config=config):
 
@@ -289,7 +292,10 @@ class Nnet(object):
                     break
 
                 #compute predictions
-                encoded_hypotheses = decoder(utt_mat)
+                encoded_hypotheses, alpha, cmp_feat = decoder(utt_mat)
                 nbests[utt_id] = encoded_hypotheses
+                alphas[utt_id] = alpha
+                utts[utt_id] = utt_mat
+                cmp_feats[utt_id] = cmp_feat
 
-        return nbests
+        return nbests, alphas, utts, cmp_feats

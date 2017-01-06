@@ -89,7 +89,7 @@ class Listener(object):
 _AttendAndSpellStateTouple = \
     collections.namedtuple(
         "AttendAndSpellStateTouple",
-        "pre_context_states, post_context_states, one_hot_char, context_vector"
+        "pre_context_states, post_context_states, one_hot_char, context_vector, alpha"
         )
 class StateTouple(_AttendAndSpellStateTouple):
     """ Tuple used by Attend and spell cells for `state_size`,
@@ -147,6 +147,7 @@ class AttendAndSpellCell(RNNCell):
         self.dec_state_size = int(decoder_state_size)
         self.high_lvl_features = None
         self.high_lvl_feature_dim = None
+        self.feature_time = None
         self.psi = None
 
         self.las_model = las_model
@@ -198,6 +199,7 @@ class AttendAndSpellCell(RNNCell):
 
         self.high_lvl_features = high_lvl_features
         feature_shape = tf.Tensor.get_shape(high_lvl_features)
+        self.feature_time = feature_shape[1]
 
         with tf.variable_scope("compute_psi"):
             print("     Feature dimension:", feature_shape)
@@ -267,9 +269,10 @@ class AttendAndSpellCell(RNNCell):
             #context_vector = tf.identity(context_vector)
             print("  context_vector shape:",
                   tf.Tensor.get_shape(context_vector))
+            alpha = tf.constant(np.zeros([batch_size, self.feature_time]), dtype)
 
         return StateTouple(pre_context_states, post_context_states,
-                           one_hot_char, context_vector)
+                           one_hot_char, context_vector, alpha)
 
     def select_out_or_target(self, groundtruth_char, one_hot_char):
         """ Select the last system output value, or the ground-truth.
@@ -315,8 +318,8 @@ class AttendAndSpellCell(RNNCell):
 
 
     def attention_context(self, pre_context_out):
-        """ Compute the attention context based on the high lefel features
-            and the pre context state.
+        """ Compute the attention context based on the high level features
+            and the pre-context state.
         Args:
             pre_context_out: The output of the state RNN, s_i in the las
                              paper.
@@ -347,7 +350,7 @@ class AttendAndSpellCell(RNNCell):
             context_vector_3d = tf.batch_matmul(alpha_3d, self.high_lvl_features,
                                                 name='context_matmul')
             context_vector = tf.squeeze(context_vector_3d, squeeze_dims=[1])
-        return context_vector
+        return context_vector, alpha
 
 
     def __call__(self, cell_input, state, scope=None, reuse=False):
@@ -374,7 +377,7 @@ class AttendAndSpellCell(RNNCell):
             # StateTouple extends a collection, pylint doesn't get it.
             # pylint: disable = E0633
             pre_context_states, post_context_states, one_hot_char, \
-                context_vector = state
+                context_vector, _ = state
 
             if self.psi is None:
                 raise AttributeError("Features must be set.")
@@ -395,7 +398,7 @@ class AttendAndSpellCell(RNNCell):
                     self.pre_context_rnn(rnn_input, pre_context_states)
 
             ### compute the attention context. ###
-            context_vector = self.attention_context(pre_context_out)
+            context_vector, alpha = self.attention_context(pre_context_out)
 
             #add the post context rnn layer for type two cells.
             if self.type_two is True:
@@ -420,7 +423,8 @@ class AttendAndSpellCell(RNNCell):
                 RNNStateList(pre_context_states),
                 RNNStateList(post_context_states),
                 one_hot_char,
-                context_vector)
+                context_vector,
+                alpha)
         return logits, attend_and_spell_states
 
 

@@ -37,7 +37,7 @@ class Decoder(object):
                 tf.int32, shape=[1], name='seq_length')
 
             #create the decoding graph
-            logits, logits_seq_length, self.saver, _ = \
+            logits, logits_seq_length, self.saver, _, self.alphas, self.compressed_features = \
                 classifier(
                     self.inputs, self.input_seq_length, targets=None,
                     target_seq_length=None, is_training=False, decoding=True,
@@ -97,13 +97,13 @@ class Decoder(object):
                               inputs.shape[1]]), 0)
 
         #pylint: disable=E1101
-        decoded = tf.get_default_session().run(
-            self.outputs,
+        decoded, alphas, comp_feats = tf.get_default_session().run(
+            [self.outputs, self.alphas, self.compressed_features],
             feed_dict={self.inputs:inputs[np.newaxis, :, :],
                        self.input_seq_length:input_seq_length})
 
         decoded = self.process_decoded(decoded)
-        return decoded
+        return decoded, alphas, comp_feats
 
     def restore(self, filename):
         '''

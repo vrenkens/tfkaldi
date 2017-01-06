@@ -59,13 +59,14 @@ class LasModel(Classifier):
         self.mel_feature_no = self.gen_set.mel_feature_no
         self.batch_size = self.gen_set.batch_size
         self.target_label_no = self.gen_set.target_label_no
+        self.feat_time = None
 
         #decoding constants
         self.max_decoding_steps = 100
         #self.max_decoding_steps = 44
 
         #store the two model parts.
-        self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no, 
+        self.listener = Listener(self.lst_set.lstm_dim, self.lst_set.plstm_layer_no,
                                  self.lst_set.output_dim, self.lst_set.out_weights_std)
         self.attend_and_spell_cell = AttendAndSpellCell(
             self, self.as_set.decoder_state_size,
@@ -105,7 +106,7 @@ class LasModel(Classifier):
         """
         with tf.variable_scope("input_noise"):
             #add input noise with a standart deviation of stddev.
-            inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs 
+            inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs
         return inputs
 
     def __call__(self, inputs, seq_length, is_training=False, decoding=False,
@@ -151,6 +152,7 @@ class LasModel(Classifier):
                                               sequence_length=target_seq_length,
                                               scope='attend_and_spell')
                 logits_sequence_length = target_seq_length
+                alphas = None
             else:
                 print('adding decoding attend and spell computations to the graph...')
                 self.attend_and_spell_cell.set_features(high_level_features,
@@ -159,13 +161,19 @@ class LasModel(Classifier):
                     self.batch_size, self.dtype)
 
                 with tf.variable_scope('attend_and_spell'):
-                    _, _, one_hot_char, _ = cell_state
+                    _, _, one_hot_char, _, _ = cell_state
                     logits = tf.expand_dims(one_hot_char, 1)
 
                     time = tf.constant(0, tf.int32, shape=[])
                     done_mask = tf.cast(tf.zeros(self.batch_size), tf.bool)
                     sequence_length = tf.ones(self.batch_size, tf.int32)
-                    loop_vars = DecodingTouple(logits, cell_state, time,
+                    alpha = cell_state[-1]
+                    #debug_here()
+                    self.feat_time = int(tf.Tensor.get_shape(alpha)[1])
+                    alphas = tf.expand_dims(alpha, [1])
+
+
+                    loop_vars = DecodingTouple(logits, alphas, cell_state, time,
                                                done_mask, sequence_length)
 
                     #set up the shape invariants for the while loop.
@@ -174,12 +182,15 @@ class LasModel(Classifier):
                     flat_invariants[0] = tf.TensorShape([self.batch_size,
                                                          None,
                                                          self.target_label_no])
+                    flat_invariants[1] = tf.TensorShape([self.batch_size,
+                                                         None,
+                                                         self.feat_time])
                     shape_invariants = nest.pack_sequence_as(shape_invariants,
                                                              flat_invariants)
                     result = tf.while_loop(
                         self.cond, self.body, loop_vars=[loop_vars],
                         shape_invariants=[shape_invariants])
-                    logits, cell_state, time, _, logits_sequence_length = result[0]
+                    logits, alphas, cell_state, time, _, logits_sequence_length = result[0]
 
             # The saver can be used to restore the variables in the graph
             # from file later.
@@ -190,19 +201,19 @@ class LasModel(Classifier):
 
         print("Logits tensor shape:", tf.Tensor.get_shape(logits))
         #None is returned as no control ops are defined yet.
-        return logits, logits_sequence_length, saver, None
+        return logits, logits_sequence_length, saver, None, alphas, high_level_features
 
     def cond(self, loop_vars):
         """ Condition in charge of the attend and spell decoding
             while loop. It checks if all the spellers in the current batch
             are confident of having found an eos token or if a maximum time
-            has been exeeded.
+            has been exceeded.
         Args:
             loop_vars: The loop variables.
         Returns:
             keep_working, true if the loop should continue.
         """
-        _, _, time, done_mask, sequence_length = loop_vars
+        _, _, _, time, done_mask, _ = loop_vars
 
         #the encoding table has the eos token ">" placed at position 0.
         #i.e. ">", "<", ...
@@ -216,15 +227,15 @@ class LasModel(Classifier):
 
     def get_sequence_lengths(self, time, logits, done_mask, logits_sequence_length):
         """
-        Determine the sequence length of the decoded logits based on the 
-        greedy decoded end of sentence token probability, the current time and 
+        Determine the sequence length of the decoded logits based on the
+        greedy decoded end of sentence token probability, the current time and
         a done mask, which keeps track of the first appreanche of an end of sentence
         token.
 
         Args:
             time: The current time step [].
             logits: The logits produced by the las cell in a matrix [batch_size, label_no].
-            done_mask: A boolen mask vector of size [batch_size]
+            done_mask: A boolean mask vector of size [batch_size]
             logits_sequence_length: An integer vector with [batch_size] entries.
         Return:
             Updated versions of the logits_sequence_length and mask vectors with unchanged
@@ -232,11 +243,11 @@ class LasModel(Classifier):
 
         """
         with tf.variable_scope("get_sequence_lengths"):
-            
+
             max_vals = tf.argmax(logits, 1)
             mask = tf.equal(max_vals, tf.constant(0, tf.int64))
             #current_mask = tf.logical_and(mask, tf.logical_not(done_mask))
-            
+
             time_vec = tf.ones(self.batch_size, tf.int32)*(time+1)
             logits_sequence_length = tf.select(done_mask,
                                                logits_sequence_length,
@@ -246,48 +257,55 @@ class LasModel(Classifier):
 
     def body(self, loop_vars):
         ''' The body of the decoding while loop. Contains a manual enrolling
-            of the attend and spell computations. 
+            of the attend and spell computations.
         Args:
             The loop variables from the previous iteration.
         Returns:
             The loop variables as computed during the current iteration.
         '''
 
-        prev_logits, cell_state, time, done_mask, logits_sequence_length = loop_vars
+        prev_logits, prev_alphas, cell_state, time, done_mask, logits_sequence_length =  \
+            loop_vars
         time = time + 1
 
         logits, cell_state = \
             self.attend_and_spell_cell(None, cell_state)
 
         #update the sequence lengths.
-        done_mask, logits_sequence_length = self.get_sequence_lengths(time,
-                                                                      logits,
-                                                                      done_mask,
-                                                                      logits_sequence_length)
+        done_mask, logits_sequence_length = self.get_sequence_lengths(
+            time, logits, done_mask, logits_sequence_length)
 
         #store the logits.
         logits = tf.expand_dims(logits, 1)
         logits = tf.concat(1, [prev_logits, logits])
         #pylint: disable=E1101
         logits.set_shape([self.batch_size, None, self.target_label_no])
+        #store the alphas
+        alphas = cell_state[-1]
+        alphas = tf.expand_dims(alphas, 1)
+        alphas = tf.concat(1, [prev_alphas, alphas])
+        #pylint: disable=E1101
+        alphas.set_shape([self.batch_size, None, self.feat_time])
 
-        out_vars = DecodingTouple(logits, cell_state, time, done_mask, logits_sequence_length)
+        out_vars = DecodingTouple(logits, alphas, cell_state, time, done_mask,
+                                  logits_sequence_length)
         return [out_vars]
 
 #create a tf style cell state tuple object to derive the actual tuple from.
 _DecodingStateTouple = \
     collections.namedtuple(
         "_DecodingStateTouple",
-        "logits, cell_state, time, done_mask, sequence_length")
+        "logits, alphas, cell_state, time, done_mask, sequence_length")
 
 class DecodingTouple(_DecodingStateTouple):
     """ Tuple used by Attend and spell cells for `state_size`,
      `zero_state`, and output state.
       Stores three elements:
-      `(logits, cell_state, time, done_mask, sequence_length)`, in that order.
+      `(logits, alphas, cell_state, time, done_mask, sequence_length)`, in that order.
       Dimensions are:
             logits:      [batch_size, None, label_no]
-        cell_state:      A nested list, with the cell variables as outlined in the 
+            alphas:      [batch_size, None, feature_time]
+        cell_state:      A nested list, with the cell variables as outlined in the
                          las cell code.
               time:      A scalar recording the time.
          done_mask:      A boolean mask vector of shape [batch_size] recording

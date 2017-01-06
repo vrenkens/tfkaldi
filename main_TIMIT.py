@@ -187,7 +187,7 @@ if TEST_LAS:
     #decode with the neural net
     resultsfolder = savedir + '/decode'
     
-    nbests = nnet.decode(featreader, coder)
+    nbests, alphas, utt_dict, cmp_feats = nnet.decode(featreader, coder)
     lev_dist = 0.0
     utts = 0.0
     for utt_id, decoded in nbests.iteritems():
@@ -200,12 +200,28 @@ if TEST_LAS:
     print('set lev_dist: %f' % lev_dist)
     utt_id = references.keys()[0]
     print('Utterance_id', utt_id)
-    print(references[utt_id])
-    print(coder.decode(nbests[utt_id][0][0]))
+    print('<sos> ' + references[utt_id] + ' <eos>')
+    decoded_phones = coder.decode(nbests[utt_id][0][0])
+    print(decoded_phones)
     ex_lev = score.edit_distance(coder.encode(references[utt_id]),
                                  nbests[utt_id][0][0])
     target = coder.encode(references[utt_id])
-    #print(target)
-    #print(target.size)
     print('example lev_dist/length:', ex_lev/target.size)
+
+    utt = utt_dict[utt_id]
+    cmp_feat = cmp_feats[utt_id]
+    alpha = alphas[utt_id]
+    dec_seq_length = nbests[utt_id][1][0]
+    
+    #import scipy.io as sio
+    #sio.savemat('alpha.mat', {'alpha':alpha[0, :, :154].T})
+    
+    import matplotlib.pyplot as plt
+    #plt.subplot(131)
+    #plt.imshow(utt)
+    #plt.subplot(121)
+    #plt.imshow(cmp_feat[0, :154, :])
+    #plt.subplot(122)
+    plt.imshow(alpha[0, :, :154].T)
+    plt.show()
 
