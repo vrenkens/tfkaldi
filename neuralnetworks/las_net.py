@@ -12,6 +12,7 @@ from neuralnetworks.classifiers.las_model import LasModel
 from neuralnetworks.las_elements import GeneralSettings
 from neuralnetworks.las_elements import ListenerSettings
 from neuralnetworks.las_elements import AttendAndSpellSettings
+from neuralnetworks.las_elements import DropoutSettings
 from neuralnetworks.reg_trainer import LasCrossEnthropyTrainer
 from neuralnetworks.decoder import SimpleSeqDecoder
 
@@ -46,13 +47,14 @@ class Nnet(object):
         #save the input dim
         self.input_dim = input_dim
 
-        #create a Listener model, which will be paired with CTC later.
-        #"mel_feature_no, batch_size, target_label_no, dtype"
         self.gset = GeneralSettings(
             int(self.feat_conf['nfilt']),
             int(self.net_conf['numutterances_per_minibatch']),
             int(num_labels), 
             int(self.net_conf['beam_width']),
+            float(self.net_conf['input_noise_std']),
+            DropoutSettings(float(self.net_conf['input_keep_prob']),
+                            float(self.net_conf['hidden_keep_prob'])),
             tf.float32)
         #lstm_dim, plstm_layer_no, output_dim, out_weights_std
         self.lset = ListenerSettings(int(self.net_conf['num_units']),
@@ -60,26 +62,22 @@ class Nnet(object):
                                      None, None,
                                      int(self.net_conf['num_layers']))
 
-        if self.net_conf['post_context_rnn'] == 'True':
-            post_context_rnn = True
-        else:
-            post_context_rnn = False
-
-
         #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
         self.asset = AttendAndSpellSettings(
             int(self.net_conf['state_size']),
             int(self.net_conf['net_size']),
             int(self.net_conf['n_hidden']),
-            float(self.net_conf['net_out_prob']),
-            post_context_rnn)
+            float(self.net_conf['net_out_prob']))
 
         self.classifier = LasModel(self.gset, self.lset, self.asset)
 
+        #the decoding clessifier has a batch size of one.
         gset = GeneralSettings(self.gset.mel_feature_no,
                                1,
                                self.gset.target_label_no,
                                self.gset.beam_width,
+                               self.gset.input_noise_std,
+                               self.gset.dropout_settings,
                                self.gset.dtype)
         self.decoding_classifier = LasModel(gset, self.lset, self.asset)
 

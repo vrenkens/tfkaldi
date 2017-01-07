@@ -45,7 +45,7 @@ class BeamSearchSpeller(object):
     """
 
     def __init__(self, as_cell_settings, batch_size, dtype, target_label_no,
-                 max_decoding_steps, beam_width):
+                 max_decoding_steps, beam_width, dropout_settings):
         """ Initialize the listener.
         Arguments:
             A speller settings object containing:
@@ -67,7 +67,7 @@ class BeamSearchSpeller(object):
             self.as_set.feedforward_hidden_units,
             self.as_set.feedforward_hidden_layers,
             self.as_set.net_out_prob,
-            self.as_set.type)
+            dropout_settings)
 
         #Intoduce the zero_state variables, which are used during decoding.
         self.zero_state = None
@@ -390,11 +390,11 @@ class BeamSearchSpeller(object):
             new_state = self.zero_state.to_list(new_state_tensor,
                                                 self.zero_state_lengths)
             state = StateTouple(new_state.pre_context_states,
-                                new_state.post_context_states,
                                 tf.expand_dims(tf.one_hot(new_selected[sel_no],
                                                           self.target_label_no),
                                                0),
-                                new_state.context_vector)
+                                new_state.context_vector,
+                                new_state.alpha)
             states.append(state)
         out_vars = BeamList([probs, selected, states,
                              time, sequence_length, done_mask])

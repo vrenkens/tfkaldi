@@ -25,7 +25,8 @@ from IPython.core.debugger import Tracer; debug_here = Tracer();
 #interface object containing general model information.
 GeneralSettings = collections.namedtuple(
     "GeneralSettings",
-    "mel_feature_no, batch_size, target_label_no, beam_width, dtype")
+    "mel_feature_no, batch_size, target_label_no, beam_width, input_noise_std, \
+     dropout_settings, dtype")
 
 #interface object containing settings related to the listener.
 ListenerSettings = collections.namedtuple(
@@ -36,13 +37,16 @@ ListenerSettings = collections.namedtuple(
 AttendAndSpellSettings = collections.namedtuple(
     "AttendAndSpellSettings",
     "decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers, \
-     net_out_prob, type")
+     net_out_prob")
+
+#interface object for the drouput params
+DropoutSettings = collections.namedtuple("DropoutSettings", "input_keep_prob, hidden_keep_prob")
 
 class Listener(object):
     """
     A set of pyramidal blstms, which compute high level audio features.
     """
-    def __init__(self, listener_settings):
+    def __init__(self, general_settings, listener_settings):
         """ Initialize the listener.
 
         Arguments:
@@ -59,6 +63,7 @@ class Listener(object):
         self.lstm_dim = int(listener_settings.lstm_dim)
         self.plstm_layer_no = int(listener_settings.plstm_layer_no)
         self.pyramidal = listener_settings.pyramidal
+        self.dropout_settings = general_settings.dropout_settings
         if listener_settings.output_dim is not None:
             self.output_dim = int(listener_settings.output_dim)
         else:
@@ -76,9 +81,15 @@ class Listener(object):
             self.ff_layer = FFLayer(self.output_dim, identity_activation,
                                     float(listener_settings.out_weights_std))
 
-    def __call__(self, input_features, sequence_lengths, reuse):
+    def __call__(self, input_features, sequence_lengths, is_training=False, reuse=False):
         """ Compute the output of the listener function. """
-        # compute the base layer blstm output.
+        #compute the base layer blstm output.
+
+        if is_training is True:
+            input_features = tf.nn.dropout(input_features,
+                                           self.dropout_settings.input_keep_prob,
+                                           name="lst_input_dropout")
+
         with tf.variable_scope(type(self).__name__, reuse=reuse):
             hidden_values, sequence_lengths = \
                 self.blstm_layer(input_features,
@@ -87,6 +98,11 @@ class Listener(object):
                                  scope="blstm_layer")
             #move on to the plstm outputs.
             for counter in range(self.plstm_layer_no):
+
+                if is_training is True:
+                    hidden_values = tf.nn.dropout(hidden_values,
+                                                  self.dropout_settings.hidden_keep_prob,
+                                                  name="lst_hidden_dropout")
                 hidden_values, sequence_lengths = \
                     self.plstm_layer(hidden_values,
                                      sequence_lengths,
@@ -98,8 +114,7 @@ class Listener(object):
                 hidden_shape = tf.Tensor.get_shape(hidden_values)
                 non_seq_hidden = seq2nonseq(hidden_values, sequence_lengths)
                 non_seq_output_values = self.ff_layer(non_seq_hidden)
-                output_values = nonseq2seq(non_seq_output_values,
-                                           sequence_lengths,
+                output_values = nonseq2seq(non_seq_output_values, sequence_lengths,
                                            int(hidden_shape[1]))
         else:
             output_values = hidden_values
@@ -152,190 +167,11 @@ class DecodingTouple(_DecodingStateTouple):
         shapes = nest.pack_sequence_as(self, flat_shapes)
         return shapes
 
-class Speller(object):
-    """
-    The speller takes high level features and implements an attention based
-    transducer to find the desired sequence labeling.
-    """
-
-    def __init__(self, as_cell_settings, batch_size, dtype, target_label_no,
-                 max_decoding_steps):
-        """ Initialize the listener.
-
-        Arguments:
-            A speller settings object containing:
-            decoder_state_size: The size of the decoder RNN
-            feedforward_hidden_units: The number of hidden units in the ff nets.
-            feedforward_hidden_layers: The number of hidden layers
-                                       for the ff nets.
-            net_out_prob: The network output reuse probability during training.
-            type: If true a post context RNN is added to the tree.
-        """
-        self.as_set = as_cell_settings
-        self.batch_size = batch_size
-        self.dtype = dtype
-        self.target_label_no = target_label_no
-        self.max_decoding_steps = max_decoding_steps
-        self.attend_and_spell_cell = AttendAndSpellCell(
-            self, self.as_set.decoder_state_size,
-            self.as_set.feedforward_hidden_units,
-            self.as_set.feedforward_hidden_layers,
-            self.as_set.net_out_prob,
-            self.as_set.type)
-
-    def __call__(self, high_level_features, feature_seq_length, target_one_hot,
-                 target_seq_length, decoding):
-        """
-        Arguments:
-            high_level_features: The output from the listener
-                                 [batch_size, max_input_time, listen_out]
-            feature_seq_length: The feature sequence lengths [batch_size]
-            target_one_hot: The one hot encoded targets
-                                 [batch_size, max_target_time, label_no]
-            target_seq_length: Target sequence length vector [batch_size]
-            decoding: Flag indicating if a decoding graph must be set up.
-        Returns:
-            logits: The output logits [batch_size, decoding_time, label_no]
-            logits_sequence_length: The logit sequence lengths [batch_size]
-            decoded_sequence: Only returned if decoding is True else None
-        """
-
-        if decoding is not True:
-            print('adding training attend and spell computations ...')
-            #training mode
-            self.attend_and_spell_cell.set_features(high_level_features,
-                                                    feature_seq_length)
-            zero_state = self.attend_and_spell_cell.zero_state(
-                self.batch_size, self.dtype)
-            logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
-                                          inputs=target_one_hot,
-                                          initial_state=zero_state,
-                                          sequence_length=target_seq_length,
-                                          scope='attend_and_spell')
-            logits_sequence_length = target_seq_length
-        else:
-            print('adding decoding attend and spell computations ...')
-            self.attend_and_spell_cell.set_features(high_level_features,
-                                                    feature_seq_length)
-            cell_state = self.attend_and_spell_cell.zero_state(
-                self.batch_size, self.dtype)
-
-            with tf.variable_scope('attend_and_spell'):
-                _, _, one_hot_char, _ = cell_state
-                logits = tf.expand_dims(one_hot_char, 1)
-
-                time = tf.constant(0, tf.int32, shape=[])
-                done_mask = tf.cast(tf.zeros(self.batch_size), tf.bool)
-                sequence_length = tf.ones(self.batch_size, tf.int32)
-                loop_vars = DecodingTouple(logits, cell_state, time,
-                                           done_mask, sequence_length)
-
-                #set up the shape invariants for the while loop.
-                shape_invariants = loop_vars.get_shape()
-                flat_invariants = nest.flatten(shape_invariants)
-                flat_invariants[0] = tf.TensorShape([self.batch_size,
-                                                     None,
-                                                     self.target_label_no])
-                shape_invariants = nest.pack_sequence_as(shape_invariants,
-                                                         flat_invariants)
-                result = tf.while_loop(
-                    self.cond, self.body, loop_vars=[loop_vars],
-                    shape_invariants=[shape_invariants])
-                logits, cell_state, time, _, logits_sequence_length = result[0]
-
-        return logits, logits_sequence_length
-
-    def cond(self, loop_vars):
-        """ Condition in charge of the attend and spell decoding
-            while loop. It checks if all the spellers in the current batch
-            are confident of having found an eos token or if a maximum time
-            has been exeeded.
-        Args:
-            loop_vars: The loop variables.
-        Returns:
-            keep_working, true if the loop should continue.
-        """
-        _, _, time, done_mask, _ = loop_vars
-
-        #the encoding table has the eos token ">" placed at position 0.
-        #i.e. ">", "<", ...
-        not_done_no = tf.reduce_sum(tf.cast(tf.logical_not(done_mask),
-                                            tf.int32))
-        all_eos = tf.equal(not_done_no, tf.constant(0))
-        stop_loop = tf.logical_or(all_eos, tf.greater(time,
-                                                      self.max_decoding_steps))
-        keep_working = tf.logical_not(stop_loop)
-        #keep_working = tf.Print(keep_working, [keep_working, sequence_length])
-        return keep_working
-
-
-    def get_sequence_lengths(self, time, logits, done_mask,
-                             logits_sequence_length):
-        """
-        Determine the sequence length of the decoded logits based on the
-        greedy decoded end of sentence token probability, the current time and
-        a done mask, which keeps track of the first appreanche of an end of
-        sentence token.
-
-        Args:
-            time: The current time step [].
-            logits: The logits produced by the las cell in a matrix
-                    [batch_size, label_no].
-            done_mask: A boolean mask vector of size [batch_size]
-            logits_sequence_length: An integer vector with [batch_size] entries.
-        Return:
-            Updated versions of the logits_sequence_length and mask
-            vectors with unchanged sizes.
-        """
-        with tf.variable_scope("get_sequence_lengths"):
-
-            max_vals = tf.argmax(logits, 1)
-            mask = tf.equal(max_vals, tf.constant(0, tf.int64))
-            #current_mask = tf.logical_and(mask, tf.logical_not(done_mask))
-
-            time_vec = tf.ones(self.batch_size, tf.int32)*(time+1)
-            logits_sequence_length = tf.select(done_mask,
-                                               logits_sequence_length,
-                                               time_vec)
-            done_mask = tf.logical_or(mask, done_mask)
-        return done_mask, logits_sequence_length
-
-    def body(self, loop_vars):
-        ''' The body of the decoding while loop. Contains a manual enrolling
-            of the attend and spell computations.
-        Args:
-            The loop variables from the previous iteration.
-        Returns:
-            The loop variables as computed during the current iteration.
-        '''
-
-        prev_logits, cell_state, time, done_mask, \
-            logits_sequence_length = loop_vars
-        time = time + 1
-
-        logits, cell_state = \
-            self.attend_and_spell_cell(None, cell_state)
-
-        #update the sequence lengths.
-        done_mask, logits_sequence_length = self.get_sequence_lengths(
-            time, logits, done_mask, logits_sequence_length)
-
-        #store the logits.
-        logits = tf.expand_dims(logits, 1)
-        logits = tf.concat(1, [prev_logits, logits])
-        #pylint: disable=E1101
-        logits.set_shape([self.batch_size, None, self.target_label_no])
-
-        out_vars = DecodingTouple(logits, cell_state, time,
-                                  done_mask, logits_sequence_length)
-        return [out_vars]
-
-
 #create a tf style cell state tuple object to derive the actual tuple from.
 _AttendAndSpellStateTouple = \
     collections.namedtuple(
         "AttendAndSpellStateTouple",
-        "pre_context_states, post_context_states, one_hot_char, context_vector"
+        "pre_context_states, one_hot_char, context_vector, alpha"
         )
 
 class StateTouple(_AttendAndSpellStateTouple):
@@ -434,6 +270,7 @@ class StateTouple(_AttendAndSpellStateTouple):
         return nest.pack_sequence_as(self, flat_self)
 
 
+
 class AttendAndSpellCell(RNNCell):
     """
     Define an attend and Spell Cell. This cell takes the high level features
@@ -442,14 +279,14 @@ class AttendAndSpellCell(RNNCell):
 
     Internal Variables:
               features: (H) the high level features the Listener computed.
-         decoder_state: (s_i) ambiguous in the las paper split in two here.
+         decoder_state: (s_i) the internal RNN state.
        context_vectors: (c_i) in the paper, found using the
                         attention_context function.
           one_hot_char: (y) one hot encoded input and output char.
     """
     def __init__(self, las_model, decoder_state_size=40,
                  feedforward_hidden_units=56, feedforward_hidden_layers=3,
-                 net_out_prob=0.2, type_two=False):
+                 net_out_prob=0.2, dropout_settings=DropoutSettings(1.0, 1.0)):
         self.feedforward_hidden_units = int(feedforward_hidden_units)
         self.feedforward_hidden_layers = int(feedforward_hidden_layers)
         self.net_out_prob = float(net_out_prob)
@@ -457,12 +294,12 @@ class AttendAndSpellCell(RNNCell):
         self.dec_state_size = int(decoder_state_size)
         self.high_lvl_features = None
         self.high_lvl_feature_dim = None
+        self.feature_time = None
         self.psi = None
+        self.is_training = False
 
         self.las_model = las_model
-
-        #Determines whether the post_context_rnn will be used.
-        self.type_two = type_two
+        self.dropout_settings = dropout_settings
 
         #--------------------Create network functions-------------------------#
         # Feed-forward layer custom parameters. Vincent knows more about these.
@@ -473,18 +310,21 @@ class AttendAndSpellCell(RNNCell):
                                              self.feedforward_hidden_units,
                                              self.feedforward_hidden_layers)
         self.state_net = FeedForwardNetwork(state_net_dimension,
-                                            activation, name='state_net')
+                                            activation,
+                                            self.dropout_settings,
+                                            name='state_net')
         # copy the state net any layer settings
         # => all properties, which are not explicitly changed
         # stay the same.
         featr_net_dimension = copy(state_net_dimension)
         self.featr_net = FeedForwardNetwork(featr_net_dimension,
-                                            activation, name='featr_net')
+                                            activation,
+                                            self.dropout_settings,
+                                            name='featr_net')
 
         self.pre_context_rnn = RNN(self.dec_state_size,
+                                   self.dropout_settings,
                                    name='pre_context_rnn')
-        self.post_context_rnn = RNN(self.dec_state_size,
-                                    name='post_context_rnn')
 
         char_net_dimension = FFNetDimension(
             output_dim=self.las_model.target_label_no,
@@ -493,9 +333,10 @@ class AttendAndSpellCell(RNNCell):
 
         self.char_net = FeedForwardNetwork(char_net_dimension,
                                            activation,
+                                           self.dropout_settings,
                                            name='char_net')
 
-    def set_features(self, high_lvl_features, feature_seq_lengths):
+    def set_features(self, high_lvl_features, feature_seq_lengths, is_training=False):
         ''' Set the features when available, storing the features in the
             object makes the cell call simpler. Additionally this function
             evaluates the state net and stores the result moving this
@@ -504,17 +345,19 @@ class AttendAndSpellCell(RNNCell):
         Args:
             high_lvl_featrues: The output computed by the listener. [batch_size,
                                 compresses_max_time, feature_dim]
-            feature_seq_lengths: The feature sequence lengths. [batch_size]'''
-
+            feature_seq_lengths: The feature sequence lengths. [batch_size]
+            is_training: if set to True regularization functions are added to the graph.'''
+        self.is_training = is_training
         self.high_lvl_features = high_lvl_features
         feature_shape = tf.Tensor.get_shape(high_lvl_features)
+        self.feature_time = feature_shape[1]
 
         with tf.variable_scope("compute_psi"):
             print("     Feature dimension:", feature_shape)
             self.high_lvl_feature_dim = feature_shape[2]
             feature_shape = tf.Tensor.get_shape(high_lvl_features)
             non_seq_features = seq2nonseq(high_lvl_features, feature_seq_lengths)
-            non_seq_psi = self.featr_net(non_seq_features)
+            non_seq_psi = self.featr_net(non_seq_features, is_training)
             self.psi = nonseq2seq(non_seq_psi, feature_seq_lengths,
                                   int(feature_shape[1]))
             print("  Psi tensor dimension:", tf.Tensor.get_shape(self.psi))
@@ -535,7 +378,7 @@ class AttendAndSpellCell(RNNCell):
         return self.zero_state(self.las_model.batch_size, self.las_model.dtype).get_shape()
 
     def zero_state(self, batch_size, dtype):
-        """Return an initial state for the Attend and state cell.
+        """Return an initial state for the Attend and spell cell.
         Args:
             batch_size: The size of the mini-batches, which are going to be fed into
                         this instantiation of this classifier.
@@ -556,8 +399,6 @@ class AttendAndSpellCell(RNNCell):
             # and context vector variables.
             pre_context_states = self.pre_context_rnn.get_zero_states(
                 batch_size, dtype)
-            post_context_states = self.post_context_rnn.get_zero_states(
-                batch_size, dtype)
 
             # The character distribution must initially be the sos token.
             # assuming encoding done as specified in the batch dispenser.
@@ -577,9 +418,8 @@ class AttendAndSpellCell(RNNCell):
             #context_vector = tf.identity(context_vector)
             print("  context_vector shape:",
                   tf.Tensor.get_shape(context_vector))
-
-        return StateTouple(pre_context_states, post_context_states,
-                           one_hot_char, context_vector)
+            alpha = tf.constant(np.zeros([batch_size, self.feature_time]), dtype)
+        return StateTouple(pre_context_states, one_hot_char, context_vector, alpha)
 
     def select_out_or_target(self, groundtruth_char, one_hot_char):
         """ Select the last system output value, or the ground-truth.
@@ -625,8 +465,8 @@ class AttendAndSpellCell(RNNCell):
 
 
     def attention_context(self, pre_context_out):
-        """ Compute the attention context based on the high lefel features
-            and the pre context state.
+        """ Compute the attention context based on the high level features
+            and the pre-context state.
         Args:
             pre_context_out: The output of the state RNN, s_i in the las
                              paper.
@@ -638,7 +478,7 @@ class AttendAndSpellCell(RNNCell):
         with tf.variable_scope("attention_context"):
             ### compute the attention context. ###
             # e_(i,u) = phi(s_i)^T * psi(h_u)
-            phi = self.state_net(pre_context_out)
+            phi = self.state_net(pre_context_out, self.is_training)
             # phi_3d shape: [batch_size, state_size, 1]
             phi_3d = tf.expand_dims(phi, 2)
             # [batch_size, time, state_size] * [batch_size, state_size, 1]
@@ -654,46 +494,38 @@ class AttendAndSpellCell(RNNCell):
             alpha_3d = tf.expand_dims(alpha, 1)
             # [batch_size, 1 , time] * [batch_size, time, state_dim]
             # = [batch_size, 1, state_dim]
-            context_vector_3d = tf.batch_matmul(alpha_3d,
-                                                self.high_lvl_features,
+            context_vector_3d = tf.batch_matmul(alpha_3d, self.high_lvl_features,
                                                 name='context_matmul')
             context_vector = tf.squeeze(context_vector_3d, squeeze_dims=[1])
-        return context_vector
+        return context_vector, alpha
 
 
     def __call__(self, cell_input, state, scope=None, reuse=False):
         """
         Do the computations for a single unrolling of the attend and
         spell network.
-        Arguments:
+        Args:
             cell_input: During training make sure the cell_input contains
-                        valid ground-truth values.
+                        valid groundtrouth values.
                         During decoding the cell_input may be none.
             state: The attend and spell cell state, must be a cell state
-                   Tuple object containing the variables
-                   pre_context_states, post_context_states,
-                   one_hot_char, context_vector, in that order.
+                   Touple object contiaining the variables
+                   pre_context_states, one_hot_char, context_vector, in that order.
             scope: a scope name for the cell.
             reuse: The reuse flag, set to true to reuse variables previously
                    defined.
         Returns:
-            An attend and spell state tuple object with updated values.
+            An attend and spell state touple object with updated values.
         """
         as_cell_call_scope = scope or (type(self).__name__+ "_call")
         with tf.variable_scope(as_cell_call_scope, reuse=reuse):
             groundtruth_char = cell_input
             # StateTouple extends a collection, pylint doesn't get it.
             # pylint: disable = E0633
-            pre_context_states, post_context_states, one_hot_char, \
-                context_vector = state
+            pre_context_states, one_hot_char, context_vector, _ = state
 
             if self.psi is None:
                 raise AttributeError("Features must be set.")
-
-            #make sure no targets are present during decoding.
-            #if decoding_tree is True:
-            #    assert groundtruth_char is None, \
-            #        "Targets cannot be set during decoding."
 
             #Pick the last output sometimes.
             if groundtruth_char is not None:
@@ -708,33 +540,26 @@ class AttendAndSpellCell(RNNCell):
             #print('pre_context input size:', tf.Tensor.get_shape(rnn_input))
 
             pre_context_out, pre_context_states = \
-                    self.pre_context_rnn(rnn_input, pre_context_states)
+                    self.pre_context_rnn(rnn_input, pre_context_states, self.is_training)
 
             ### compute the attention context. ###
-            context_vector = self.attention_context(pre_context_out)
+            context_vector, alpha = self.attention_context(pre_context_out)
 
-            #add the post context rnn layer for type two cells.
-            if self.type_two is True:
-                post_context_out, post_context_states = \
-                self.post_context_rnn(context_vector, post_context_states)
-                char_net_input = tf.concat(1,
-                                           [pre_context_out,
-                                            post_context_out],
-                                           name='char_net_input_concat')
-            else:
-                char_net_input = tf.concat(1,
-                                           [pre_context_out, context_vector],
-                                           name='char_net_input_concat')
-            logits = self.char_net(char_net_input)
+            char_net_input = tf.concat(1,
+                                       [pre_context_out, context_vector],
+                                       name='char_net_input_concat')
+            logits = self.char_net(char_net_input, self.is_training)
+
+            ### Decoding ###
             one_hot_char = self.greedy_decoding(logits)
 
             # pack everything up in structures which allow the
             # tensorflow unrolling functions to do their data-type checking.
             attend_and_spell_states = StateTouple(
                 RNNStateList(pre_context_states),
-                RNNStateList(post_context_states),
                 one_hot_char,
-                context_vector)
+                context_vector,
+                alpha)
         return logits, attend_and_spell_states
 
 
@@ -760,27 +585,54 @@ class RNN(object):
     """
     Set up the RNN network which computes the decoder state.
     """
-    def __init__(self, lstm_dim, name):
+    def __init__(self, lstm_dim, dropout_settings, name):
         self.name = name
         self.layer_number = 1
-        #create the two required LSTM blocks.
-        self.blocks = []
+        self.dropout_settings = dropout_settings
+        #create a LSTM blocks.
+
         lstm_init = tf.random_uniform_initializer(minval=-0.1, maxval=0.1)
+        self.cell = rnn_cell.LSTMCell(int(lstm_dim),
+                                      use_peepholes=True,
+                                      state_is_tuple=True,
+                                      initializer=lstm_init)
+        self.blocks = []
         for _ in range(0, self.layer_number):
-            self.blocks.append(rnn_cell.LSTMCell(int(lstm_dim),
-                                                 use_peepholes=True,
-                                                 state_is_tuple=True,
-                                                 initializer=lstm_init))
+            self.blocks.append(self.cell)
         self.wrapped_cells = rnn_cell.MultiRNNCell(self.blocks,
                                                    state_is_tuple=True)
+
+        self.dropout_blocks = []
+        if self.layer_number == 1:
+            cell = tf.nn.rnn_cell.DropoutWrapper(self.cell,
+                                                 self.dropout_settings.input_keep_prob,
+                                                 1.0)
+        else:
+            cell = tf.nn.rnn_cell.DropoutWrapper(self.cell,
+                                                 self.dropout_settings.input_keep_prob,
+                                                 self.dropout_settings.hidden_keep_prob)
+        self.dropout_blocks.append(cell)
+        for _ in range(1, self.layer_number-1):
+            cell = tf.nn.rnn_cell.DropoutWrapper(self.cell, 1.0,
+                                                 self.dropout_settings.hidden_keep_prob)
+            self.dropout_blocks.append(cell)
+        if self.layer_number > 1:
+            #no dropout after the last layer.
+            self.dropout_blocks.append(self.cell)
+        self.dropout_cells = rnn_cell.MultiRNNCell(self.dropout_blocks,
+                                                   state_is_tuple=True)
+
         self.reuse = None
+
+
+
 
     def get_zero_states(self, batch_size, dtype):
         """ Get a list filled with zero states which can be used
             to start up the unrolled LSTM computations."""
         return RNNStateList(self.wrapped_cells.zero_state(batch_size, dtype))
 
-    def __call__(self, single_input, state):
+    def __call__(self, single_input, state, is_training):
         """
         Computes the RNN outputs for a single input.
         Args:
@@ -794,10 +646,14 @@ class RNN(object):
         #assert len(state) == len(self.blocks)
 
         with tf.variable_scope(self.name + '_call', reuse=self.reuse):
-            output = self.wrapped_cells(single_input, state)
 
-        if self.reuse is None:
-            self.reuse = True
+            if is_training is True:
+                output = self.dropout_cells(single_input, state)
+            else:
+                output = self.wrapped_cells(single_input, state)
+
+            if self.reuse is None:
+                self.reuse = True
 
         return output
 
@@ -813,11 +669,12 @@ class FeedForwardNetwork(object):
     """ A class defining the feedforward MLP networks used to compute the
         scalar energy values required for the attention mechanism.
     """
-    def __init__(self, dimension, activation, name):
+    def __init__(self, dimension, activation, dropout_settings, name):
         #store the settings
         self.dimension = dimension
         self.activation = activation
         self.name = name
+        self.dropout_settings = dropout_settings
         self.reuse = None
 
         #create the layers
@@ -829,7 +686,7 @@ class FeedForwardNetwork(object):
         identity_activation = IdentityWrapper()
         self.layers[-1] = FFLayer(dimension.output_dim, identity_activation)
 
-    def __call__(self, states_or_features):
+    def __call__(self, states_or_features, is_training):
         """
         Evaluate this feedforward net given the current input.
         Args:
@@ -838,8 +695,14 @@ class FeedForwardNetwork(object):
         Returns:
             The network output.
         """
-        hidden = states_or_features
+        if is_training is True:
+            hidden = tf.nn.dropout(states_or_features, self.dropout_settings.input_keep_prob)
+        else:
+            hidden = states_or_features
         for i, layer in enumerate(self.layers):
+            if (is_training is True) and (i > 0):
+                hidden = tf.nn.dropout(hidden, self.dropout_settings.hidden_keep_prob,
+                                       name=self.name+"/dropout")
             hidden = layer(hidden, scope=(self.name + '/' + str(i)),
                            reuse=(self.reuse))
         #set reuse to true after the variables have been created in the first

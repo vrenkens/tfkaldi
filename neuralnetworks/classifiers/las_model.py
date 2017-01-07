@@ -6,7 +6,6 @@ from __future__ import absolute_import, division, print_function
 import tensorflow as tf
 from neuralnetworks.classifiers.classifier import Classifier
 from neuralnetworks.las_elements import Listener
-from neuralnetworks.las_elements import Speller
 from neuralnetworks.beam_search_speller import BeamSearchSpeller
 from IPython.core.debugger import Tracer; debug_here = Tracer();
 
@@ -45,7 +44,7 @@ class LasModel(Classifier):
         #self.max_decoding_steps = 44
 
         #store the two model parts.
-        self.listener = Listener(listener_settings)
+        self.listener = Listener(general_settings, listener_settings)
 
         #create a greedy speller.
         #self.speller = Speller(attend_and_spell_settings,
@@ -60,7 +59,8 @@ class LasModel(Classifier):
                                          self.dtype,
                                          self.target_label_no,
                                          self.max_decoding_steps,
-                                         beam_width= self.gen_set.beam_width)
+                                         beam_width=self.gen_set.beam_width,
+                                         dropout_settings=self.gen_set.dropout_settings)
 
     def encode_targets_one_hot(self, targets):
         """
@@ -90,9 +90,12 @@ class LasModel(Classifier):
         returns:
             Input features plus noise.
         """
-        with tf.variable_scope("input_noise"):
-            #add input noise with a standart deviation of stddev.
-            inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs
+        if stddev != 0:
+            with tf.variable_scope("input_noise"):
+                #add input noise with a standart deviation of stddev.
+                inputs = tf.random_normal(tf.shape(inputs), 0.0, stddev) + inputs
+        else:
+            print("stddev is zero no input noise added.")
         return inputs
 
     def __call__(self, inputs, seq_length, is_training=False, decoding=False,
