@@ -705,7 +705,7 @@ class AttendAndSpellCell(RNNCell):
             #s_i = RNN(s_(i-1), y_(i-1), c_(i-1))
             rnn_input = tf.concat(1, [one_hot_char, context_vector],
                                   name='pre_context_rnn_input_concat')
-            print('pre_context input size:', tf.Tensor.get_shape(rnn_input))
+            #print('pre_context input size:', tf.Tensor.get_shape(rnn_input))
 
             pre_context_out, pre_context_states = \
                     self.pre_context_rnn(rnn_input, pre_context_states)

@@ -222,9 +222,7 @@ class Trainer(object):
 
             #create the summaries for visualisation
             self.summary = tf.merge_summary(
-                [tf.histogram_summary(val.name, val)
-                 for val in params+meangrads]
-                + [tf.scalar_summary('loss', self.average_loss)])
+                [tf.scalar_summary('loss', self.average_loss)])
 
 
         #specify that the graph can no longer be modified after this point

@@ -23,7 +23,7 @@ TRAINFEATURES = False
 TESTFEATURES = False
 TRAIN = True
 TEST_CTC = False
-TEST_LAS = False
+TEST_LAS = True
 
 #read config file
 config = configparser.ConfigParser()
@@ -209,3 +209,4 @@ if TEST_LAS:
     #print(target)
     #print(target.size)
     print('example lev_dist/length:', ex_lev/target.size)
+    debug_here()
