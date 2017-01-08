@@ -56,11 +56,11 @@ class Nnet(object):
             DropoutSettings(float(self.net_conf['input_keep_prob']),
                             float(self.net_conf['hidden_keep_prob'])),
             tf.float32)
-        #lstm_dim, plstm_layer_no, output_dim, out_weights_std
+        #lstm_dim, plstm_layer_no, output_dim, out_weights_std, pyramidal
         self.lset = ListenerSettings(int(self.net_conf['num_units']),
                                      int(self.net_conf['num_layers']),
                                      None, None,
-                                     int(self.net_conf['num_layers']))
+                                     True)
 
         #decoder_state_size, feedforward_hidden_units, feedforward_hidden_layers
         self.asset = AttendAndSpellSettings(

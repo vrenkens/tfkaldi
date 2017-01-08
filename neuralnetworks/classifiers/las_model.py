@@ -106,7 +106,7 @@ class LasModel(Classifier):
         print('\x1b[0m')
 
         if is_training is True:
-            inputs = self.add_input_noise(inputs)
+            inputs = self.add_input_noise(inputs, self.gen_set.input_noise_std)
             #check if the targets are available for training.
             assert targets is not None
 
@@ -127,11 +127,11 @@ class LasModel(Classifier):
         with tf.variable_scope(scope or type(self).__name__, reuse=reuse):
             print('adding listen computations to the graph...')
             high_level_features, feature_seq_length \
-                = self.listener(inputs, seq_length, reuse)
+                = self.listener(inputs, seq_length, is_training, reuse)
 
             output, output_sequence_length = self.speller(
                 high_level_features, feature_seq_length, targets,
-                target_seq_length, decoding)
+                target_seq_length, is_training, decoding)
 
             # The saver can be used to restore the variables in the graph
             # from file later.

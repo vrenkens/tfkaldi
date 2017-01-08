@@ -62,7 +62,7 @@ class Listener(object):
         """
         self.lstm_dim = int(listener_settings.lstm_dim)
         self.plstm_layer_no = int(listener_settings.plstm_layer_no)
-        self.pyramidal = listener_settings.pyramidal
+        self.pyramidal = bool(listener_settings.pyramidal)
         self.dropout_settings = general_settings.dropout_settings
         if listener_settings.output_dim is not None:
             self.output_dim = int(listener_settings.output_dim)
@@ -344,7 +344,7 @@ class AttendAndSpellCell(RNNCell):
             data is stored in the cell object for future reference.
         Args:
             high_lvl_featrues: The output computed by the listener. [batch_size,
-                                compresses_max_time, feature_dim]
+                                compressed_max_time, feature_dim]
             feature_seq_lengths: The feature sequence lengths. [batch_size]
             is_training: if set to True regularization functions are added to the graph.'''
         self.is_training = is_training

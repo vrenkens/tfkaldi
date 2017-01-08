@@ -74,7 +74,7 @@ class BeamSearchSpeller(object):
         self.zero_state_lengths = None
 
     def __call__(self, high_level_features, feature_seq_length, target_one_hot,
-                 target_seq_length, decoding):
+                 target_seq_length, is_training=False, decoding=False):
         """
         Arguments:
             high_level_features: The output from the listener
@@ -97,7 +97,8 @@ class BeamSearchSpeller(object):
             print('Adding training attend and spell computations ...')
             #training mode
             self.attend_and_spell_cell.set_features(high_level_features,
-                                                    feature_seq_length)
+                                                    feature_seq_length,
+                                                    is_training=is_training)
             zero_state = self.attend_and_spell_cell.zero_state(
                 self.batch_size, self.dtype)
             logits, _ = tf.nn.dynamic_rnn(cell=self.attend_and_spell_cell,
