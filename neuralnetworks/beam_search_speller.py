@@ -244,65 +244,66 @@ class BeamSearchSpeller(object):
                         label. It must be updatet after pruning.
         """
         #------------------ expand ------------------------------#
-        expanded_probs = tf.TensorArray(dtype=tf.float32,
-                                        size=self.beam_width,
-                                        name='expanded_current_probs')
-        expanded_selected = tf.TensorArray(dtype=tf.int32,
-                                           size=self.beam_width,
-                                           name='expanded_selected')
-        beam_pos = tf.TensorArray(dtype=tf.int32,
-                                  size=self.beam_width,
-                                  name='beam_pos')
-        states_new = BeamList()
+        with tf.variable_scope("expand_beam"):
+            expanded_probs = tf.TensorArray(dtype=tf.float32,
+                                            size=self.beam_width,
+                                            name='expanded_current_probs')
+            expanded_selected = tf.TensorArray(dtype=tf.int32,
+                                               size=self.beam_width,
+                                               name='expanded_selected')
+            beam_pos = tf.TensorArray(dtype=tf.int32,
+                                      size=self.beam_width,
+                                      name='beam_pos')
+            states_new = BeamList()
 
-        for beam_no, cell_state in enumerate(states):
-            logits, cell_state = \
-                self.attend_and_spell_cell(None, cell_state)
-            states_new.append(cell_state)
+            for beam_no, cell_state in enumerate(states):
+                logits, cell_state = \
+                    self.attend_and_spell_cell(None, cell_state)
+                states_new.append(cell_state)
 
-            full_probs = tf.nn.softmax(tf.squeeze(logits))
-            best_probs, selected_new = tf.nn.top_k(full_probs,
-                                                   k=self.beam_width,
-                                                   sorted=True)
+                full_probs = tf.nn.softmax(tf.squeeze(logits))
+                best_probs, selected_new = tf.nn.top_k(full_probs,
+                                                       k=self.beam_width,
+                                                       sorted=True)
 
-            length = tf.cast(sequence_length[beam_no], tf.float32)
-            #pylint: disable=W0640
-            def update():
-                """ Compute the beam probability using the newly found
-                    label probs """
-                update_val = (probs + tf.log(best_probs)) / length
-                return update_val 
+                length = tf.cast(sequence_length[beam_no], tf.float32)
+                #pylint: disable=W0640
+                def update():
+                    """ Compute the beam probability using the newly found
+                        label probs """
+                    update_val = (probs + tf.log(best_probs)) / length
+                    return update_val 
 
-            def const(): 
-                """ The probability for a finished beam is 
-                    sum(log(probs))/length """
-                update_val = (probs + tf.zeros(self.beam_width) / length)
-                return update_val
+                def const(): 
+                    """ The probability for a finished beam is 
+                        sum(log(probs))/length """
+                    update_val = (probs + tf.zeros(self.beam_width) / length)
+                    return update_val
 
-            new_beam_prob = tf.cond(done_mask[beam_no], const, update)            
-            expanded_probs = expanded_probs.write(beam_no,
-                                                  new_beam_prob)
-            expanded_selected = expanded_selected.write(beam_no,
-                                                        selected_new)
-            beam_pos = beam_pos.write(beam_no, tf.ones(
-                self.beam_width, tf.int32)*beam_no)
+                new_beam_prob = tf.cond(done_mask[beam_no], const, update)            
+                expanded_probs = expanded_probs.write(beam_no,
+                                                      new_beam_prob)
+                expanded_selected = expanded_selected.write(beam_no,
+                                                            selected_new)
+                beam_pos = beam_pos.write(beam_no, tf.ones(
+                    self.beam_width, tf.int32)*beam_no)
 
 
-        # make shure while time <beam_width 
-        # only relevant beams are considered
-        # if time < beam_width then time is selected.
-        beam_count = tf.select(time < self.beam_width, 
-                               time,
-                               self.beam_width)
-        expanded_probs_tensor = expanded_probs.gather(
-            tf.range(0, beam_count))            
-        expanded_selected_tensor = expanded_selected.gather(
-            tf.range(0, beam_count))
-        beam_pos_tensor = beam_pos.gather(
-            tf.range(0, beam_count))
-        prob_tensor = tf.reshape(expanded_probs_tensor, [-1])
-        new_sel_tensor = tf.reshape(expanded_selected_tensor, [-1])
-        beam_pos_tensor = tf.reshape(beam_pos_tensor, [-1])
+            # make shure while time <beam_width 
+            # only relevant beams are considered
+            # if time < beam_width then time is selected.
+            beam_count = tf.select(time < self.beam_width, 
+                                   time,
+                                   self.beam_width)
+            expanded_probs_tensor = expanded_probs.gather(
+                tf.range(0, beam_count))            
+            expanded_selected_tensor = expanded_selected.gather(
+                tf.range(0, beam_count))
+            beam_pos_tensor = beam_pos.gather(
+                tf.range(0, beam_count))
+            prob_tensor = tf.reshape(expanded_probs_tensor, [-1])
+            new_sel_tensor = tf.reshape(expanded_selected_tensor, [-1])
+            beam_pos_tensor = tf.reshape(beam_pos_tensor, [-1])
 
         return prob_tensor, new_sel_tensor, beam_pos_tensor, states_new
 
@@ -329,22 +330,23 @@ class BeamSearchSpeller(object):
         Returns:
             Pruned or reshuffeled versions of very input vector. 
         """
+        with tf.variable_scope("prune_beam"):
 
-        probs, stay_indices = tf.nn.top_k(prob_tensor,
-                                          k=self.beam_width,
-                                          sorted=True)
+            probs, stay_indices = tf.nn.top_k(prob_tensor,
+                                              k=self.beam_width,
+                                              sorted=True)
 
-        # use the stay_indices to gather from expanded tensors, this produces reduced size
-        # output vectors.
-        new_selected = tf.gather(new_sel_tensor, stay_indices)
+            # use the stay_indices to gather from expanded tensors, this produces reduced size
+            # output vectors.
+            new_selected = tf.gather(new_sel_tensor, stay_indices)
 
-        beam_pos_selected = tf.gather(beam_pos_tensor, stay_indices)
-        # use the beam_pos to gather from old beam data. These operations do not change the vector
-        # sizes.
-        old_selected = tf.gather(old_selected, beam_pos_selected)
-        probs = tf.gather(probs, beam_pos_selected)
-        done_mask = tf.gather(done_mask, beam_pos_selected)
-        sequence_length = tf.gather(sequence_length, beam_pos_selected)
+            beam_pos_selected = tf.gather(beam_pos_tensor, stay_indices)
+            # use the beam_pos to gather from old beam data. These operations do not change the vector
+            # sizes.
+            old_selected = tf.gather(old_selected, beam_pos_selected)
+            probs = tf.gather(probs, beam_pos_selected)
+            done_mask = tf.gather(done_mask, beam_pos_selected)
+            sequence_length = tf.gather(sequence_length, beam_pos_selected)
 
         return probs, new_selected, old_selected, beam_pos_selected, done_mask, sequence_length 
 
